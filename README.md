@@ -6,6 +6,8 @@ An Intel 8080 emulator in TypeScript, built for tinkering and debugging. Write
 assembly in the browser and watch it run on an emulated machine with a
 terminal, LEDs, switches, a timer and a small colour display.
 
+**Try it: [tedre191.github.io/8080-workbench](https://tedre191.github.io/8080-workbench/)**
+
 - **[`packages/core`](packages/core)**: the emulator as a library with no
   dependencies: a cycle-accurate CPU, a machine with pluggable devices, an
   assembler and a disassembler. It passes all four classic CPU exercisers.
