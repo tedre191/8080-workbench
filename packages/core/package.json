@@ -1,0 +1,18 @@
+{
+  "name": "@i8080/core",
+  "private": true,
+  "description": "Intel 8080 emulator: CPU, machine, devices, assembler and disassembler",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:exm": "I8080_EXM=1 vitest run test/cpm.test.ts",
+    "fetch-roms": "node scripts/fetch-roms.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}

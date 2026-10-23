@@ -1,0 +1,6 @@
+node_modules
+dist
+*.tsbuildinfo
+.DS_Store
+# downloaded by `pnpm fetch-roms`
+packages/core/test/roms/

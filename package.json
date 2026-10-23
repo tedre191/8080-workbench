@@ -1,0 +1,29 @@
+{
+  "name": "i8080-workspace",
+  "private": true,
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tedre191/8080-workbench.git"
+  },
+  "packageManager": "pnpm@12.15.0",
+  "scripts": {
+    "dev": "pnpm --filter @i8080/web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "test:exm": "pnpm --filter @i8080/core test:exm",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "oxlint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "fetch-roms": "pnpm --filter @i8080/core fetch-roms"
+  },
+  "devDependencies": {
+    "prettier": "3.9.10",
+    "oxlint": "1.89.0"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  }
+}
