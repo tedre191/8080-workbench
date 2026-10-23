@@ -413,14 +413,35 @@ code {
 }
 
 .status-bar {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
   padding: 4px 18px;
   font: 12.5px var(--font-mono);
   background: var(--ceramic-deep);
   border-bottom: 1px solid var(--rule);
   color: var(--silk-dim);
+}
+
+.status-text {
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.repo-link {
+  flex: none;
+  font-family: var(--font-ui);
+  color: var(--silk-faint);
+  text-decoration: none;
+}
+
+.repo-link:hover,
+.repo-link:focus-visible {
+  color: var(--gold);
+  text-decoration: underline;
 }
 
 .status-bar.tone-stop {

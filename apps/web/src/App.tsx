@@ -20,6 +20,8 @@ import { Session } from './session';
 const DEBUG_TABS = ['Memory', 'Breakpoints', 'Trace', 'Reference'] as const;
 type DebugTab = (typeof DEBUG_TABS)[number];
 
+const REPOSITORY_URL = 'https://github.com/tedre191/8080-workbench';
+
 // How long typing must pause before the edited program is loaded.
 const SYNC_DELAY_MS = 400;
 
@@ -150,8 +152,13 @@ export function App() {
     <div className="app">
       <FrontPanel session={session} />
 
-      <div className={'status-bar tone-' + status.tone} role="status">
-        {status.text}
+      <div className={'status-bar tone-' + status.tone}>
+        <span className="status-text" role="status">
+          {status.text}
+        </span>
+        <a className="repo-link" href={REPOSITORY_URL} target="_blank" rel="noreferrer">
+          Source on GitHub
+        </a>
       </div>
 
       <main className="workspace">
