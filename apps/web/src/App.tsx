@@ -4,7 +4,7 @@ import { BinaryInfo } from './components/BinaryInfo';
 import { Breakpoints } from './components/Breakpoints';
 import { Devices } from './components/Devices';
 import { Disassembly } from './components/Disassembly';
-import { Editor } from './components/Editor';
+import { Editor, replaceText } from './components/Editor';
 import { FrontPanel } from './components/FrontPanel';
 import { Memory } from './components/Memory';
 import { ProgramBar } from './components/ProgramBar';
@@ -106,7 +106,9 @@ export function App() {
     const lineEnd = newline === -1 ? source.length : newline;
     const before = source.slice(0, lineEnd);
     const after = source.slice(lineEnd);
-    onEdit(before === '' ? code + after : `${before}\n${code}${after}`);
+    const text = before === '' ? code + after : `${before}\n${code}${after}`;
+    if (editorInput.current) replaceText(editorInput.current, text, onEdit);
+    else onEdit(text);
   };
 
   const onDelete = () => {

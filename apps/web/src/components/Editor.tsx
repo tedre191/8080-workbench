@@ -27,6 +27,46 @@ const POPUP_WIDTH = 320;
 
 const NAVIGATION_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown']);
 
+// True while `replaceText` is changing the text, so the input event it causes
+// isn't mistaken for typing.
+let replacing = false;
+
+// Change the textarea's text to `text` as if it were typed, so the browser's
+// undo history keeps working. (Setting `value` from code clears it.) Only the
+// part that differs is replaced. `onChange` is the fallback for browsers
+// without `insertText`.
+export function replaceText(
+  textarea: HTMLTextAreaElement,
+  text: string,
+  onChange: (text: string) => void,
+) {
+  const old = textarea.value;
+  let start = 0;
+  while (start < old.length && start < text.length && old[start] === text[start]) start++;
+  let end = 0;
+  while (
+    end < old.length - start &&
+    end < text.length - start &&
+    old.at(-1 - end) === text.at(-1 - end)
+  ) {
+    end++;
+  }
+  if (start === old.length && start === text.length) return;
+
+  textarea.focus();
+  textarea.setSelectionRange(start, old.length - end);
+  replacing = true;
+  try {
+    const insert = text.slice(start, text.length - end);
+    const inserted = insert
+      ? document.execCommand('insertText', false, insert)
+      : document.execCommand('delete');
+    if (!inserted || textarea.value !== text) onChange(text);
+  } finally {
+    replacing = false;
+  }
+}
+
 interface Suggestions {
   result: CompletionResult;
   selected: number;
@@ -72,7 +112,7 @@ export function Editor({ session, source, live, onChange, inputRef }: Props) {
 
   const apply = (edit: Edit) => {
     nextSelection.current = [edit.start, edit.end];
-    onChange(edit.text);
+    replaceText(textarea.current!, edit.text, onChange);
   };
 
   // Place the list under the word being completed, but inside the visible area.
@@ -119,6 +159,8 @@ export function Editor({ session, source, live, onChange, inputRef }: Props) {
     const text = event.target.value;
     const cursor = event.target.selectionStart;
     onChange(text);
+    // Our own edits (see `replaceText`) handle suggestions themselves.
+    if (replacing) return;
 
     const typedOneChar = text.length === source.length + 1;
     const typed = typedOneChar ? text[cursor - 1] : '';
