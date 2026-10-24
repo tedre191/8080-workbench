@@ -293,20 +293,19 @@ export function App() {
           </div>
         </section>
 
-        <section className="pane pane-io">
-          <div className="io-terminal">
-            <h2 className="pane-title">
-              Terminal <span className="muted">ports 10h, 11h</span>
-              <button className="btn small" onClick={() => session.clearTerminal()}>
-                Clear
-              </button>
-            </h2>
-            <TerminalView session={session} />
-          </div>
-          <div className="io-devices">
-            <h2 className="pane-title">Devices</h2>
-            <Devices session={session} />
-          </div>
+        <section className="pane pane-terminal">
+          <h2 className="pane-title">
+            Terminal <span className="muted">ports 10h, 11h</span>
+            <button className="btn small" onClick={() => session.clearTerminal()}>
+              Clear
+            </button>
+          </h2>
+          <TerminalView session={session} />
+        </section>
+
+        <section className="pane pane-devices">
+          <h2 className="pane-title">Devices</h2>
+          <Devices session={session} />
         </section>
       </main>
     </div>

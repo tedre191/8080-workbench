@@ -170,11 +170,13 @@ code {
   display: grid;
   gap: 1px;
   background: var(--rule);
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 300px;
+  /* The panes above and below share the same columns. The first is wider
+     so a 16-byte memory row fits; the last is as wide as the devices need. */
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) 440px;
   grid-template-rows: minmax(0, 1.4fr) minmax(0, 1fr);
   grid-template-areas:
     'source disasm cpu'
-    'debug io io';
+    'debug terminal devices';
 }
 
 .pane {
@@ -199,9 +201,12 @@ code {
 .pane-debug {
   grid-area: debug;
 }
-.pane-io {
-  grid-area: io;
-  flex-direction: row;
+.pane-terminal {
+  grid-area: terminal;
+}
+.pane-devices {
+  grid-area: devices;
+  overflow-y: auto;
 }
 
 .pane-title {
@@ -228,14 +233,14 @@ code {
   margin-left: auto;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1200px) {
   .workspace {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-rows: 60vh 55vh 50vh;
     grid-template-areas:
       'source disasm'
       'cpu debug'
-      'io io';
+      'terminal devices';
   }
   .app {
     height: auto;
@@ -245,8 +250,8 @@ code {
 @media (max-width: 720px) {
   .workspace {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 60vh 50vh auto 50vh auto;
-    grid-template-areas: 'source' 'disasm' 'cpu' 'debug' 'io';
+    grid-template-rows: 60vh 50vh auto 50vh 40vh auto;
+    grid-template-areas: 'source' 'disasm' 'cpu' 'debug' 'terminal' 'devices';
   }
 }
 
@@ -1123,37 +1128,6 @@ input.byte.hexfield {
 
 /* I/O: terminal and devices */
 
-.io-terminal {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.io-devices {
-  width: 440px;
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  border-left: 1px solid var(--rule);
-  overflow-y: auto;
-}
-
-@media (max-width: 720px) {
-  .pane-io {
-    flex-direction: column;
-  }
-  .io-terminal {
-    flex: none;
-    height: 40vh;
-  }
-  .io-devices {
-    width: auto;
-    border-left: 0;
-    border-top: 1px solid var(--rule);
-  }
-}
-
 .terminal {
   flex: 1;
   min-height: 0;
@@ -1431,7 +1405,7 @@ input.byte.hexfield {
 
 .program-name {
   flex: 1;
-  min-width: 10ch;
+  min-width: 6ch;
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-s);
