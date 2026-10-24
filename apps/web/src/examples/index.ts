@@ -3,6 +3,7 @@ import hello from './hello.asm?raw';
 import interrupts from './interrupts.asm?raw';
 import leds from './leds.asm?raw';
 import primes from './primes.asm?raw';
+import simon from './simon.asm?raw';
 import snake from './snake.asm?raw';
 
 export interface Example {
@@ -19,7 +20,8 @@ export const EXAMPLES: Example[] = [
   { id: 'leds', name: 'LED counter', source: leds, usesDevices: true },
   { id: 'display', name: 'Display pattern', source: display, usesDevices: true },
   { id: 'interrupts', name: 'Timer interrupts', source: interrupts, usesDevices: true },
-  { id: 'snake', name: 'Snake (all devices)', source: snake, usesDevices: true },
+  { id: 'snake', name: 'Snake', source: snake, usesDevices: true },
+  { id: 'simon', name: 'Simon', source: simon, usesDevices: true },
 ];
 
 // Where the classic CPU test programs are downloaded from when opened.

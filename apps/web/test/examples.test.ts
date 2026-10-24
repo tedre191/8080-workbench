@@ -1,5 +1,5 @@
 // The example programs must assemble and behave as their comments say.
-import { assemble, Display, Leds, Machine, Switches, Terminal, Timer } from '@i8080/core';
+import { assemble, Display, Leds, Machine, Sound, Switches, Terminal, Timer } from '@i8080/core';
 import { describe, expect, it } from 'vitest';
 import { EXAMPLES } from '../src/examples';
 
@@ -12,13 +12,14 @@ function boot(name: string) {
   m.add(new Switches());
   m.add(new Timer());
   const display = m.add(new Display());
+  const sound = m.add(new Sound());
   const r = assemble(source(name));
   expect(r.errors).toEqual([]);
   for (const s of r.segments) m.load(s.address, s.bytes);
   m.cpu.pc = r.entry;
   let out = '';
   tty.onOutput.on((b) => (out += String.fromCharCode(b)));
-  return { m, tty, leds, display, out: () => out };
+  return { m, tty, leds, display, sound, symbols: r.symbols, out: () => out };
 }
 
 describe('examples', () => {
@@ -64,7 +65,9 @@ describe('examples', () => {
     }
 
     it('moves one pixel per tick and eats food', () => {
-      const { m, display, leds, out } = start();
+      const { m, display, leds, sound, out } = start();
+      const notes: number[] = [];
+      sound.onChange.on((change) => notes.push(change.note));
       const v = display.vram;
       expect([v[px(8, 16)], v[px(9, 16)], v[px(10, 16)]]).toEqual([10, 10, 14]);
       // Put food two pixels ahead (clear any random food first).
@@ -77,10 +80,14 @@ describe('examples', () => {
       expect(leds.value).toBe(1);
       expect(out()).toContain('Yum! Score 1');
       expect(v.filter((c) => c === 12).length).toBe(1); // new food placed
+      expect(sound.state.note).toBe(84); // the blip, until the next step
+      m.run({ cycles: 180 * MS });
+      expect(sound.state.note).toBe(0);
+      expect(notes).toContain(84);
     });
 
     it('steers, refuses to reverse, and crashes into walls', () => {
-      const { m, tty, display, out } = start();
+      const { m, tty, display, sound, out } = start();
       tty.send('a'); // reversing: ignored
       m.run({ cycles: 180 * MS + 10 * MS });
       expect(display.vram[px(11, 16)]).toBe(14);
@@ -90,8 +97,75 @@ describe('examples', () => {
       // Keep going up into the top wall (15 more steps).
       m.run({ cycles: 17 * 180 * MS });
       expect(out()).toMatch(/Crash! Final score \d+/);
+      expect(sound.state).toMatchObject({ waveform: 'noise' }); // fading out
+      tty.send('w'); // pressed during the crash: ignored
+      m.run({ cycles: 600 * MS });
+      expect(sound.state).toEqual({ note: 0, waveform: 'square', volume: 15 });
+      expect(out()).toContain('Press any key to play again.');
+      expect(out().match(/Go!/g)?.length).toBe(1);
       tty.send(' ');
       m.run({ cycles: 40 * MS });
+      expect(out().match(/Go!/g)?.length).toBe(2);
+    });
+  });
+
+  describe('simon', () => {
+    const MS = 2000; // T-states per millisecond at 2 MHz
+    const px = (x: number, y: number) => y * 32 + x;
+    const pads = [px(1, 1), px(17, 1), px(1, 17), px(17, 17)];
+
+    it('plays a growing sequence and buzzes at a mistake', () => {
+      const { m, tty, leds, display, sound, symbols, out } = boot('simon');
+      const notes: number[] = []; // each note started
+      let playing = 0;
+      sound.onChange.on((change) => {
+        if (change.note > 0 && playing === 0) notes.push(change.note);
+        playing = change.note;
+      });
+      const seq = (i: number) => m.peek(symbols.get('seq')! + i);
+      const v = display.vram;
+
+      m.run({ cycles: 20 * MS });
+      expect(out()).toContain('Press any key to start.');
+      expect(pads.map((p) => v[p])).toEqual([2, 4, 6, 1]); // all dim
+      expect(v[px(15, 1)]).toBe(0); // the gap between pads
+
+      // The intro runs round the pads, then round 1 plays one pad.
+      tty.send(' ');
+      m.run({ cycles: 2000 * MS });
+      expect(leds.value).toBe(1);
+      expect(notes).toEqual([64, 69, 61, 52, [64, 69, 61, 52][seq(0)]]);
+
+      // Answer right: round 2 replays both pads.
+      tty.send('qwas'[seq(0)]);
+      m.run({ cycles: 2000 * MS });
+      expect(leds.value).toBe(2);
+
+      // Answer wrong: the low sawtooth buzz, all pads lit, then the score.
+      tty.send('1234'[(seq(0) + 1) & 3]);
+      m.run({ cycles: 100 * MS });
+      expect(sound.state).toMatchObject({ note: 31, waveform: 'sawtooth' });
+      expect(pads.map((p) => v[p])).toEqual([10, 12, 14, 9]);
+      m.run({ cycles: 2500 * MS });
+      expect(out()).toContain('Wrong! Rounds completed: 1');
+      expect(out()).toContain('Press any key to play again.');
+      expect(sound.state).toEqual({ note: 0, waveform: 'square', volume: 15 });
+      expect(pads.map((p) => v[p])).toEqual([2, 4, 6, 1]);
+    });
+
+    it("doesn't start again from a key pressed during the buzz", () => {
+      const { m, tty, symbols, out } = boot('simon');
+      m.run({ cycles: 20 * MS });
+      tty.send(' ');
+      m.run({ cycles: 2000 * MS });
+      const wrong = (m.peek(symbols.get('seq')!) + 1) & 3;
+      tty.send('qwas'[wrong]);
+      m.run({ cycles: 100 * MS });
+      tty.send('q'); // during the buzz
+      m.run({ cycles: 3000 * MS });
+      expect(out().match(/Go!/g)?.length).toBe(1);
+      tty.send(' ');
+      m.run({ cycles: 1000 * MS });
       expect(out().match(/Go!/g)?.length).toBe(2);
     });
   });

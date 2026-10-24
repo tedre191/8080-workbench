@@ -5,6 +5,7 @@
 ;   Timer     RST 1 drives the game clock
 ;   Switches  speed: flip more on to go faster (read every step)
 ;   LEDs      your score in binary
+;   Sound     a blip when you eat, a crash when you hit something
 ;
 ; While it runs, just type: keys go to the terminal.
 
@@ -13,6 +14,9 @@ DATA     EQU 11h
 LEDS     EQU 20h
 SWITCHES EQU 21h
 TIMER    EQU 30h
+NOTE     EQU 40h            ; sound: MIDI note, 0 = off
+WAVE     EQU 41h            ; 0 square, 1 triangle, 2 sawtooth, 3 noise
+VOLUME   EQU 42h            ; 0-15
 VRAM     EQU 0F000h
 BODY     EQU 8000h          ; ring buffer: the pixel address of each segment
 
@@ -89,6 +93,7 @@ play:   CALL keys
         JMP play
 dotick: XRA A
         STA tick
+        OUT NOTE            ; end the last step's blip, if any
         EI
         CALL random         ; stir the random generator every step
         CALL setspeed
@@ -102,8 +107,14 @@ gameover:
         CALL puts
         LDA score
         CALL putdec
+        CALL crash
         LXI H, againmsg
         CALL puts
+flush:  IN STATUS           ; forget keys pressed during the crash
+        ANI 1
+        JZ again
+        IN DATA
+        JMP flush
 again:  IN STATUS
         ANI 1
         JZ again
@@ -208,7 +219,9 @@ advance:
         LDA ate
         ORA A
         JZ alive
-        XRA A               ; we ate: score, new food, tell the player
+        MVI A, 84           ; we ate: a blip (C6) until the next step,
+        OUT NOTE
+        XRA A               ; then score, new food, tell the player
         STA ate
         LDA score
         INR A
@@ -225,6 +238,28 @@ alive:  XRA A               ; Z = alive
         RET
 dead:   MVI A, 1
         ORA A               ; NZ = crashed
+        RET
+
+; The crash: a burst of low noise that fades out over about half a second.
+crash:  MVI A, 3            ; noise
+        OUT WAVE
+        MVI A, 45           ; low: noise is pitched by how fast it changes
+        OUT NOTE
+        MVI D, 15           ; volume
+cr1:    MOV A, D
+        OUT VOLUME
+        LXI B, 2800         ; 2800 x 24 T-states: about 34 ms at 2 MHz
+cr2:    DCX B
+        MOV A, B
+        ORA C
+        JNZ cr2
+        DCR D
+        JNZ cr1
+        XRA A               ; silence, then back to a full square wave
+        OUT NOTE
+        OUT WAVE
+        MVI A, 15
+        OUT VOLUME
         RET
 
 ; HL = address of ring slot A.
