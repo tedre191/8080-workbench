@@ -4,6 +4,7 @@ export interface TimerOptions {
   // Control port: OUT 0 stops, OUT n starts with a period of n ms. Default 0x30.
   port?: number;
   // CPU clock frequency, used to convert ms to T-states. Default 2 MHz.
+  // A host that runs the CPU at another rate can change it with setClockHz.
   clockHz?: number;
   // Opcode raised on each tick. Default RST 1 (0xCF).
   interruptOpcode?: number;
@@ -16,11 +17,12 @@ export interface TimerOptions {
 export class Timer implements Device {
   readonly name = 'Timer';
   readonly port: number;
-  readonly clockHz: number;
+  clockHz: number;
   interruptOpcode: number;
   periodMs = 0;
   ticks = 0;
   private cancel?: () => void;
+  private nextTick = 0; // the cycle the next tick is due at, maybe a fraction
   private machine?: Machine;
 
   constructor(options: TimerOptions = {}) {
@@ -53,15 +55,41 @@ export class Timer implements Device {
   start(periodMs: number) {
     this.stop();
     this.periodMs = periodMs;
-    if (periodMs <= 0 || !this.machine) return;
+    if (periodMs > 0 && this.machine) this.scheduleTick(this.machine.cycles + this.period());
+  }
+
+  // Change the clock rate the period is measured in, as when the CPU runs
+  // faster or slower than its nominal clock. A tick already on its way
+  // arrives after the same share of its period.
+  setClockHz(clockHz: number) {
+    if (clockHz === this.clockHz) return;
+    const old = this.clockHz;
+    this.clockHz = clockHz;
+    if (!this.cancel || !this.machine) return;
+    const now = this.machine.cycles;
+    const remaining = Math.max(0, this.nextTick - now);
+    this.cancel();
+    this.scheduleTick(now + (remaining * clockHz) / old);
+  }
+
+  // The period in clock cycles. It may be a fraction, or less than one.
+  private period() {
+    return (this.clockHz * this.periodMs) / 1000;
+  }
+
+  // Tick at cycle `time`, then every period after it. Each period counts
+  // from when the last tick was due, not from when it fired: a tick can only
+  // fire between instructions, so it may be a few cycles late. Due times
+  // keep their fractions, so the rate comes out exact in the long run.
+  private scheduleTick(time: number) {
     const machine = this.machine;
-    const period = Math.max(1, Math.round((this.clockHz * periodMs) / 1000));
-    const tick = () => {
+    if (!machine) return;
+    this.nextTick = time;
+    this.cancel = machine.scheduleAt(Math.ceil(time), () => {
       this.ticks++;
       machine.interrupt(this.interruptOpcode);
-      this.cancel = machine.schedule(period, tick);
-    };
-    this.cancel = machine.schedule(period, tick);
+      this.scheduleTick(time + this.period());
+    });
   }
 
   stop() {

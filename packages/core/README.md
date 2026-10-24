@@ -65,7 +65,9 @@ in slices without blocking (one per animation frame, say), pass
 | `Sound`    | OUT 40h–42h           | One voice: note, waveform, volume (`onChange` to play) |
 | `Rom`      | (address you give it) | Read-only memory                                       |
 
-Ports and addresses are constructor options.
+Ports and addresses are constructor options. A `Timer` counts its
+milliseconds in clock cycles at `clockHz` (2 MHz by default); a host that runs
+the CPU at another rate can call `setClockHz` to keep the timer in real time.
 
 ### Writing a device
 

@@ -227,6 +227,57 @@ wait:   HLT
     expect(m.cpu.b).toBe(10);
   });
 
+  it("timer ticks don't drift when instructions run past them", () => {
+    // XTHL takes 18 T-states, longer than the 10 T-state period, so every tick
+    // fires late. Each period still counts from when the last tick was due.
+    const { m } = machineWith(`
+        LXI SP, 1000h
+        MVI A, 1
+        OUT 30h
+loop:   XTHL
+        JMP loop`);
+    const timer = m.add(new Timer({ clockHz: 10_000 })); // 1 ms = 10 T-states
+    m.run({ cycles: 17 + 1000 });
+    expect(timer.ticks).toBeGreaterThanOrEqual(99);
+  });
+
+  it('timer keeps time when its period is under a clock cycle', () => {
+    const { m } = machineWith(`
+        MVI A, 10       ; 10 ms: 0.3 T-states at 30 Hz
+        OUT 30h
+loop:   JMP loop`);
+    const timer = m.add(new Timer({ clockHz: 30 }));
+    m.run({ cycles: 17 + 300 }); // 10 seconds
+    expect(timer.ticks).toBeGreaterThanOrEqual(995);
+    expect(timer.ticks).toBeLessThanOrEqual(1000);
+  });
+
+  it('timer keeps its period in ms when the clock rate changes', () => {
+    const { m } = machineWith(`
+        ORG 0
+        JMP main
+        ORG 8
+        INR B
+        EI
+        RET
+main:   LXI SP, 1000h
+        MVI A, 1        ; 1 ms period: 2000 T-states at 2 MHz
+        OUT 30h
+        EI
+wait:   HLT
+        JMP wait`);
+    const timer = m.add(new Timer());
+    m.run({ cycles: 1000 + 34 }); // halfway to the first tick
+    expect(m.cpu.b).toBe(0);
+    timer.setClockHz(4_000_000); // the rest of the period now takes 2000 T-states...
+    m.run({ cycles: 1900 });
+    expect(m.cpu.b).toBe(0);
+    m.run({ cycles: 200 });
+    expect(m.cpu.b).toBe(1);
+    m.run({ cycles: 4000 * 3 }); // ...and each period after it 4000
+    expect(m.cpu.b).toBe(4);
+  });
+
   it('sound reports each change with the cycle it happened at', () => {
     const { m } = machineWith(`
         MVI A, 3        ; noise
