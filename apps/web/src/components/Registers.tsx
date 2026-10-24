@@ -18,8 +18,8 @@ type Register8 = 'a' | 'b' | 'c' | 'd' | 'e' | 'h' | 'l';
 export function Registers({ session }: { session: Session }) {
   const cpu = session.machine.cpu;
   const now = cpu.getState();
-  // While running, every value changes all the time, so highlight nothing.
-  const before = session.running ? now : session.prevCpu;
+  // At full speed every value changes all the time, so highlight nothing.
+  const before = session.highlightsChanges ? session.prevCpu : now;
   const locked = session.running;
 
   const register = (name: string, key: Register8) => (

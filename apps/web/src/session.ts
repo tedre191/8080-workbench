@@ -20,12 +20,22 @@ import {
 
 export type Speed = 'slow' | 'medium' | 'real' | 'max';
 
-export const SPEEDS: { id: Speed; label: string; title: string }[] = [
-  { id: 'slow', label: '4 Hz', title: '4 instructions per second' },
-  { id: 'medium', label: '60 Hz', title: '60 instructions per second' },
-  { id: 'real', label: '2 MHz', title: 'Real Altair speed' },
+// Every speed except Max is a clock rate. At the two slow ones the run loop
+// steps one instruction at a time, so the UI can highlight what each changed.
+export const SPEEDS: { id: Speed; label: string; title: string; hz?: number }[] = [
+  { id: 'slow', label: '30 Hz', hz: 30, title: '30 clock cycles a second: about 4 instructions' },
+  {
+    id: 'medium',
+    label: '500 Hz',
+    hz: 500,
+    title: '500 clock cycles a second: about 70 instructions',
+  },
+  { id: 'real', label: '2 MHz', hz: 2_000_000, title: 'Real Altair speed' },
   { id: 'max', label: 'Max', title: 'As fast as this computer can go' },
 ];
+
+// Below this rate, run one instruction at a time and highlight its changes.
+const STEP_BY_STEP_BELOW_HZ = 1000;
 
 const CLOCK_HZ = 2_000_000;
 const MAX_TERMINAL_CHARS = 64 * 1024;
@@ -74,8 +84,10 @@ export class Session {
   private listeners = new Set<() => void>();
   private frameRequest = 0;
   private lastFrameTime = 0;
-  private stepsOwed = 0; // at the slow speeds, steps carried over to the next frame
-  private rateSample = { time: 0, cycles: 0 };
+  // Clock cycles due but not yet run. Negative when the last instruction ran
+  // past the time it was given, so the average rate comes out exact.
+  private cyclesOwed = 0;
+  private rateSample = { time: 0, clock: 0 };
   private resuming = false; // the first instruction may be on the breakpoint we stopped at
 
   constructor() {
@@ -169,6 +181,13 @@ export class Session {
     if (wasRunning && (binary || program?.ok)) this.run();
   }
 
+  // Whether the UI should highlight what the last instruction changed: when
+  // paused, or when running slowly enough to follow one instruction at a time.
+  get highlightsChanges() {
+    const hz = SPEEDS.find((speed) => speed.id === this.speed)?.hz;
+    return !this.running || (hz !== undefined && hz < STEP_BY_STEP_BELOW_HZ);
+  }
+
   // Breakpoints
 
   addressOfLine(line: number) {
@@ -227,9 +246,9 @@ export class Session {
     this.snapshot();
     this.running = true;
     this.resuming = true;
-    this.stepsOwed = 0;
+    this.cyclesOwed = 0;
     this.lastFrameTime = performance.now();
-    this.rateSample = { time: this.lastFrameTime, cycles: this.machine.cycles };
+    this.rateSample = { time: this.lastFrameTime, clock: this.clock() };
     this.status = { tone: 'info', text: 'Running' };
     this.frameRequest = requestAnimationFrame(this.onFrame);
     this.bump();
@@ -289,13 +308,9 @@ export class Session {
     let skipBreakpointAtStart = this.resuming;
     this.resuming = false;
 
-    if (this.speed === 'real') {
-      const cycles = Math.round((elapsedMs / 1000) * CLOCK_HZ);
-      return this.machine.run({ cycles, skipBreakpointAtStart });
-    }
-
-    if (this.speed === 'max') {
-      // Run in chunks until most of a 60 fps frame is used up.
+    const hz = SPEEDS.find((speed) => speed.id === this.speed)?.hz;
+    if (hz === undefined) {
+      // Max: run in chunks until most of a 60 fps frame is used up.
       const deadline = performance.now() + 12;
       let stop: StopReason = { kind: 'budget' };
       while (stop.kind === 'budget' && performance.now() < deadline) {
@@ -305,26 +320,43 @@ export class Session {
       return stop;
     }
 
-    // Slow speeds: a whole number of single steps, snapshotting before each
-    // one so the UI highlights what every instruction changed.
-    const stepsPerSecond = this.speed === 'slow' ? 4 : 60;
-    this.stepsOwed += (elapsedMs / 1000) * stepsPerSecond;
+    this.cyclesOwed += (elapsedMs / 1000) * hz;
+    if (hz >= STEP_BY_STEP_BELOW_HZ) {
+      const before = this.machine.cycles;
+      const stop = this.machine.run({
+        cycles: Math.max(0, Math.floor(this.cyclesOwed)),
+        skipBreakpointAtStart,
+      });
+      this.cyclesOwed -= this.machine.cycles - before;
+      return stop;
+    }
+
+    // Slow: one instruction at a time while cycles are owed, snapshotting
+    // before each so the UI highlights what it changed.
     let stop: StopReason = { kind: 'budget' };
-    while (this.stepsOwed >= 1 && stop.kind === 'budget') {
-      this.stepsOwed--;
+    while (this.cyclesOwed > 0 && stop.kind === 'budget') {
       this.snapshot();
+      const before = this.machine.cycles;
       stop = this.machine.run({ cycles: 1, skipBreakpointAtStart }); // one instruction
       skipBreakpointAtStart = false;
+      this.cyclesOwed -= this.machine.cycles - before;
     }
     return stop;
+  }
+
+  // The emulated clock: cycles run, plus cycles due but not yet run. An
+  // instruction finishes all at once after its 4-18 cycles, but the clock
+  // itself ticks steadily, so this is what the rate readout measures.
+  private clock() {
+    return this.machine.cycles + this.cyclesOwed;
   }
 
   // Update `measuredHz` twice a second.
   private measureRate(now: number) {
     const elapsedMs = now - this.rateSample.time;
     if (elapsedMs < 500) return;
-    this.measuredHz = ((this.machine.cycles - this.rateSample.cycles) * 1000) / elapsedMs;
-    this.rateSample = { time: now, cycles: this.machine.cycles };
+    this.measuredHz = ((this.clock() - this.rateSample.clock) * 1000) / elapsedMs;
+    this.rateSample = { time: now, clock: this.clock() };
   }
 
   private describe(stop: StopReason): Status {

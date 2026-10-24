@@ -123,7 +123,7 @@ function MemoryRow({ session, address }: { session: Session; address: number }) 
 
 function byteClass(session: Session, machine: Machine, address: number, value: number) {
   const { cpu } = machine;
-  const changed = !session.running && machine.ram[address] !== session.prevRam[address];
+  const changed = session.highlightsChanges && machine.ram[address] !== session.prevRam[address];
   return cx(
     'byte',
     address === cpu.pc && 'is-pc',
