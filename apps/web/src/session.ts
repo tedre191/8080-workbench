@@ -10,13 +10,16 @@ import {
   hex8,
   Leds,
   Machine,
+  Sound,
   Switches,
   Terminal,
   Timer,
   type AssembleResult,
   type CpuState,
+  type SoundChange,
   type StopReason,
 } from '@i8080/core';
+import { Speaker } from './speaker';
 
 export type Speed = 'slow' | 'medium' | 'real' | 'max';
 
@@ -64,6 +67,8 @@ export class Session {
   readonly switches = this.machine.add(new Switches());
   readonly timer = this.machine.add(new Timer({ clockHz: CLOCK_HZ }));
   readonly display = this.machine.add(new Display());
+  readonly sound = this.machine.add(new Sound());
+  readonly speaker = new Speaker();
 
   // What's loaded: either an assembled program or a binary.
   program: AssembleResult | null = null;
@@ -98,6 +103,7 @@ export class Session {
   constructor() {
     this.terminal.onOutput.on((byte) => this.printToTerminal(byte));
     this.switches.onChange.on(() => this.bump());
+    this.sound.onChange.on((change) => this.playSound(change));
   }
 
   subscribe = (listener: () => void) => {
@@ -269,6 +275,7 @@ export class Session {
     this.running = false;
     this.stepping = null;
     cancelAnimationFrame(this.frameRequest);
+    this.speaker.playNow(this.sound.state);
     this.status = { tone: 'info', text: `Paused at ${hex16(this.machine.cpu.pc)}h` };
     this.bump();
   }
@@ -333,6 +340,7 @@ export class Session {
     } else {
       this.running = false;
       this.stepping = null;
+      this.speaker.playNow(this.sound.state);
       this.status = this.describe(stop);
     }
     this.bump();
@@ -434,6 +442,13 @@ export class Session {
 
   setSpeed(speed: Speed) {
     this.speed = speed;
+    // Sound scheduled for real-time playback would play after newer changes.
+    if (this.running) this.speaker.playNow(this.sound.state);
+    this.bump();
+  }
+
+  setMuted(muted: boolean) {
+    this.speaker.setMuted(muted);
     this.bump();
   }
 
@@ -455,6 +470,15 @@ export class Session {
   clearTerminal() {
     this.terminalText = '';
     this.bump();
+  }
+
+  // The speakers play what the sound chip holds, paused or not, so stepping
+  // through an OUT is heard, and a note left on keeps sounding. While running
+  // at real speed each change keeps its emulated timing; otherwise it plays
+  // as soon as it happens.
+  private playSound(change: SoundChange) {
+    const inTime = this.running && this.speed === 'real' && !this.stepping;
+    this.speaker.play(change, inTime ? change.cycles / CLOCK_HZ : undefined);
   }
 
   private snapshot() {

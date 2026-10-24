@@ -4,7 +4,7 @@
 
 An Intel 8080 emulator in TypeScript, built for tinkering and debugging. Write
 assembly in the browser and watch it run on an emulated machine with a
-terminal, LEDs, switches, a timer and a small colour display.
+terminal, LEDs, switches, a timer, a small colour display and a sound chip.
 
 **Try it: [tedre191.github.io/8080-workbench](https://tedre191.github.io/8080-workbench/)**
 
@@ -72,6 +72,7 @@ outside the editor goes to its terminal.
 | Switches | IN 21h         | One switch per bit                                           |
 | Timer    | OUT 30h, n     | RST 1 every n ms (0 stops)                                   |
 | Display  | F000h–F3FFh    | 32×32 pixels, one byte each, 16 colours                      |
+| Sound    | OUT 40h–42h    | Note (MIDI number, 0 = off), waveform (0–3), volume (0–15)   |
 | CP/M     | ports FEh, FFh | Console support for `.COM` programs                          |
 
 ## Using the library
@@ -90,12 +91,13 @@ packages/core/          the emulator library
     docs.ts             a one-line reference for every instruction
     disassembler.ts
     assembler/          two-pass Intel-syntax assembler
-    devices/            terminal, CP/M, LEDs, switches, timer, display, ROM
+    devices/            terminal, CP/M, LEDs, switches, timer, display, sound, ROM
   test/                 unit tests and the CPU exercisers
   scripts/fetch-roms.mjs
 apps/web/               the workbench
   src/
     session.ts          runs the machine and connects it to React
+    speaker.ts          plays the sound device through WebAudio
     programs.ts         your saved programs
     completion.ts       autocomplete
     editing.ts          auto-indent and tabs

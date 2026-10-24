@@ -220,6 +220,19 @@ message:
         MOV M, E`,
   },
   {
+    title: 'Play a note',
+    note: 'Play middle C for about a quarter of a second, then stop.',
+    code: `        MVI A, 60           ; MIDI note 60 = middle C (69 = A 440 Hz)
+        OUT 40h             ; start the note
+        LXI B, 21000        ; about 250 ms at 2 MHz
+delay:  DCX B
+        MOV A, B
+        ORA C
+        JNZ delay
+        XRA A
+        OUT 40h             ; note 0 = silence`,
+  },
+  {
     title: 'Multiply by 10',
     note: 'Multiply A by a constant with shifts (adding A to itself) and adds.',
     code: `        MOV B, A

@@ -29,7 +29,7 @@ export function Reference({ session, onInsert, onNewProgram }: Props) {
   const search = query.trim().toLowerCase();
   const matches = (...text: string[]) => !search || text.join(' ').toLowerCase().includes(search);
 
-  const { terminal, leds, switches, timer, display } = session;
+  const { terminal, leds, switches, timer, display, sound } = session;
   const machineRows: [string, string][] = [
     [
       `IN ${hex8(terminal.statusPort)}h`,
@@ -44,6 +44,9 @@ export function Reference({ session, onInsert, onNewProgram }: Props) {
       `${hex16(display.address)}h`,
       `Display, ${display.width}×${display.height}: one byte per pixel, row by row, colours below`,
     ],
+    [`OUT ${hex8(sound.port)}h`, 'Sound: play MIDI note n (60 = middle C, 69 = A 440 Hz), 0 = off'],
+    [`OUT ${hex8(sound.port + 1)}h`, 'Sound waveform: 0 square, 1 triangle, 2 sawtooth, 3 noise'],
+    [`OUT ${hex8(sound.port + 2)}h`, 'Sound volume, 0–15'],
     ['RST n', 'Calls address n × 8: 0000h, 0008h, … 0038h. Interrupts arrive as RST.'],
     ['LXI SP, 0E000h', 'A good place for the stack; it grows down.'],
   ];

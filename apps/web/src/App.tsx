@@ -304,7 +304,12 @@ export function App() {
         </section>
 
         <section className="pane pane-devices">
-          <h2 className="pane-title">Devices</h2>
+          <h2 className="pane-title">
+            Devices
+            <button className="btn small" onClick={() => session.setMuted(!session.speaker.muted)}>
+              {session.speaker.muted ? 'Unmute sound' : 'Mute sound'}
+            </button>
+          </h2>
           <Devices session={session} />
         </section>
       </main>

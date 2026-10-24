@@ -1195,6 +1195,12 @@ input.byte.hexfield {
   min-width: 0;
 }
 
+/* The display's column: as wide as the display. */
+.device-stack.fixed {
+  flex: none;
+  width: calc(160px + 28px);
+}
+
 .device h3,
 .breakpoints h3 {
   margin: 0 0 8px;
@@ -1213,6 +1219,30 @@ input.byte.hexfield {
 
 .device p {
   margin: 0;
+}
+
+.scope-box {
+  position: relative;
+  width: 160px;
+}
+
+.scope {
+  display: block;
+  width: 160px;
+  height: 44px;
+  border: 1px solid var(--rule);
+  background: #000;
+}
+
+.scope-note {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 11px;
+  color: var(--silk-dim);
+  background: rgba(0, 0, 0, 0.6);
+  padding: 0 3px;
+  pointer-events: none;
 }
 
 .big-leds {
