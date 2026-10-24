@@ -24,11 +24,11 @@ export function TerminalView({ session }: { session: Session }) {
   const ref = useRef<HTMLDivElement>(null);
   const text = session.terminalText;
 
+  // Keep the newest output in view.
   useEffect(() => {
+    if (text === '') return;
     const element = ref.current!;
-    element.scrollTop = element.scrollHeight; // keep the newest output in view
-    // `text` isn't read above, but new output is what should trigger the scroll.
-    // oxlint-disable-next-line react/exhaustive-effect-dependencies
+    element.scrollTop = element.scrollHeight;
   }, [text]);
 
   const onKeyDown = (event: React.KeyboardEvent) => {

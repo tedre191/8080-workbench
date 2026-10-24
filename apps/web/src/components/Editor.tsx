@@ -39,7 +39,6 @@ export function Editor({ session, source, live, onChange, inputRef }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const codeArea = useRef<HTMLDivElement>(null);
   const charMeasure = useRef<HTMLSpanElement>(null);
-  const [charWidth, setCharWidth] = useState(7.8);
   const [suggestions, setSuggestions] = useState<Suggestions | null>(null);
   // Where to put the selection after we change the text ourselves.
   const nextSelection = useRef<[number, number] | null>(null);
@@ -63,11 +62,6 @@ export function Editor({ session, source, live, onChange, inputRef }: Props) {
       : undefined;
 
   useLayoutEffect(() => {
-    const width = charMeasure.current?.getBoundingClientRect().width;
-    if (width) setCharWidth(width / 64);
-  }, []);
-
-  useLayoutEffect(() => {
     if (nextSelection.current && textarea.current) {
       textarea.current.setSelectionRange(...nextSelection.current);
       nextSelection.current = null;
@@ -84,6 +78,8 @@ export function Editor({ session, source, live, onChange, inputRef }: Props) {
   // Place the list under the word being completed, but inside the visible area.
   const suggestionPosition = (text: string, from: number) => {
     const line = text.slice(0, from).split('\n').length - 1;
+    // Measured here, when the list first opens, rather than on page load.
+    const charWidth = charMeasure.current!.getBoundingClientRect().width / 64;
     let x = PADDING_LEFT + column(text, from) * charWidth - 6;
     if (scroller.current && codeArea.current) {
       const { scrollLeft, clientWidth } = scroller.current;
