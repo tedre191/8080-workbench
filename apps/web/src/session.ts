@@ -23,24 +23,51 @@ import { Speaker } from './speaker';
 
 export type Speed = 'slow' | 'medium' | 'real' | 'max';
 
-// Every speed except Max is a clock rate. At the two slow ones the run loop
-// steps one instruction at a time, so the UI can highlight what each changed.
+// Every speed except Max is a clock rate; Max runs at the fastest clock rate
+// this computer keeps up with. At the two slow ones the run loop steps one
+// instruction at a time, so the UI can highlight what each changed. At every
+// speed the timer and sound keep real time, like hardware with its CPU clock
+// turned down or up: at the slow speeds a timer may be due again before its
+// interrupt handler has finished.
 export const SPEEDS: { id: Speed; label: string; title: string; hz?: number }[] = [
-  { id: 'slow', label: '30 Hz', hz: 30, title: '30 clock cycles a second: about 4 instructions' },
+  {
+    id: 'slow',
+    label: '30 Hz',
+    hz: 30,
+    title: '30 clock cycles a second: about 4 instructions. The timer keeps real time.',
+  },
   {
     id: 'medium',
     label: '500 Hz',
     hz: 500,
-    title: '500 clock cycles a second: about 70 instructions',
+    title: '500 clock cycles a second: about 70 instructions. The timer keeps real time.',
   },
   { id: 'real', label: '2 MHz', hz: 2_000_000, title: 'Real Altair speed' },
-  { id: 'max', label: 'Max', title: 'As fast as this computer can go' },
+  {
+    id: 'max',
+    label: 'Max',
+    title: 'As fast as this computer can go. The timer and sound keep real time.',
+  },
 ];
 
 // Below this rate, run one instruction at a time and highlight its changes.
 const STEP_BY_STEP_BELOW_HZ = 1000;
 
 const CLOCK_HZ = 2_000_000;
+// Max adapts its clock rate between these, starting from the first.
+const MAX_START_HZ = 50_000_000;
+const MAX_LOWEST_HZ = 100_000;
+const MAX_HIGHEST_HZ = 1_000_000_000;
+// How Max steers its rate, each frame: slower after falling behind, faster
+// after keeping up with time to spare.
+const MAX_SLOWER = 0.9;
+const MAX_FASTER = 1.02;
+// If Max falls this far behind real time, it gives the time up.
+const MAX_LAG_SECONDS = 0.5;
+// How much of each 60 fps frame Max may spend emulating, in ms.
+const FRAME_WORK_MS = 12;
+// Instructions run in slices of this many cycles, to check the time between.
+const SLICE_CYCLES = 250_000;
 // How long a step over or out may run before it moves to the frame loop, so
 // the page stays responsive while a subroutine waits for a key.
 const QUICK_STEP_CYCLES = 200_000;
@@ -98,6 +125,11 @@ export class Session {
   // past the time it was given, so the average rate comes out exact.
   private cyclesOwed = 0;
   private rateSample = { time: 0, clock: 0 };
+  // Max's current clock rate.
+  private maxHz = MAX_START_HZ;
+  // For converting cycles to emulated seconds: the clock rate since `cycles`,
+  // when `seconds` had passed.
+  private timeBase = { cycles: 0, seconds: 0, hz: CLOCK_HZ };
   private resuming = false; // the first instruction may be on the breakpoint we stopped at
 
   constructor() {
@@ -163,6 +195,7 @@ export class Session {
     this.machine.ram.fill(0);
     this.display.clear();
     this.machine.reset();
+    this.timeBase = { cycles: 0, seconds: 0, hz: this.timeBase.hz };
     this.terminalText = '';
 
     const { binary, program } = this;
@@ -352,19 +385,20 @@ export class Session {
     let skipBreakpointAtStart = this.resuming;
     this.resuming = false;
 
-    // Steps over and out run at full speed, whatever the speed setting.
-    const until = this.stepping ?? undefined;
-    const hz = until ? undefined : SPEEDS.find((speed) => speed.id === this.speed)?.hz;
-    if (hz === undefined) {
-      // Max: run in chunks until most of a 60 fps frame is used up.
-      const deadline = performance.now() + 12;
+    // Steps over and out run flat out, whatever the speed setting.
+    const until = this.stepping;
+    if (until) {
+      const deadline = performance.now() + FRAME_WORK_MS;
       let stop: StopReason = { kind: 'budget' };
       while (stop.kind === 'budget' && performance.now() < deadline) {
-        stop = this.machine.run({ cycles: 250_000, skipBreakpointAtStart, until });
+        stop = this.machine.run({ cycles: SLICE_CYCLES, skipBreakpointAtStart, until });
         skipBreakpointAtStart = false;
       }
       return stop;
     }
+    if (this.speed === 'max') return this.runMax(elapsedMs, skipBreakpointAtStart);
+
+    const hz = SPEEDS.find((speed) => speed.id === this.speed)!.hz!;
 
     this.cyclesOwed += (elapsedMs / 1000) * hz;
     if (hz >= STEP_BY_STEP_BELOW_HZ) {
@@ -388,6 +422,58 @@ export class Session {
       this.cyclesOwed -= this.machine.cycles - before;
     }
     return stop;
+  }
+
+  // Max: run the cycles the current rate owes for `elapsedMs`, plus any
+  // still owed from frames that ran out of time. The rate steers itself to
+  // what this computer keeps up with: down a little after a frame that ends
+  // behind, so the debt gets paid off, and up a little after one that ends
+  // caught up with time to spare while the CPU was busy. (A program waiting
+  // in HLT runs no instructions, so it says nothing about how fast this
+  // computer is.) Only after a real stall, like a background tab, is the time
+  // it's behind given up.
+  private runMax(elapsedMs: number, skipBreakpointAtStart: boolean): StopReason {
+    this.cyclesOwed += (this.maxHz * elapsedMs) / 1000;
+    const deadline = performance.now() + FRAME_WORK_MS;
+    const start = this.machine.cycles;
+    let done = 0;
+    let stop: StopReason = { kind: 'budget' };
+    while (stop.kind === 'budget' && done < this.cyclesOwed && performance.now() < deadline) {
+      const cycles = Math.max(1, Math.min(SLICE_CYCLES, Math.floor(this.cyclesOwed - done)));
+      stop = this.machine.run({ cycles, skipBreakpointAtStart });
+      skipBreakpointAtStart = false;
+      done = this.machine.cycles - start;
+    }
+    this.cyclesOwed -= done;
+
+    if (stop.kind === 'budget' && elapsedMs > 0) {
+      let hz = this.maxHz;
+      if (this.cyclesOwed > this.maxHz * MAX_LAG_SECONDS) {
+        this.cyclesOwed = 0;
+        hz *= MAX_SLOWER;
+      } else if (this.cyclesOwed > 0) {
+        hz *= MAX_SLOWER;
+      } else if (!this.machine.cpu.halted && performance.now() < deadline - 4) {
+        hz *= MAX_FASTER;
+      }
+      this.maxHz = Math.min(MAX_HIGHEST_HZ, Math.max(MAX_LOWEST_HZ, hz));
+      this.setClockRate(this.maxHz);
+    }
+    return stop;
+  }
+
+  // The rate the machine's clock runs at in real time: what the timer
+  // counts its milliseconds in, and how sound is kept in time.
+  private setClockRate(hz: number) {
+    const { cycles } = this.machine;
+    this.timeBase = { cycles, seconds: this.secondsAt(cycles), hz };
+    this.timer.setClockHz(hz);
+  }
+
+  // Emulated time at clock cycle `cycles`, in seconds.
+  private secondsAt(cycles: number) {
+    const { timeBase } = this;
+    return timeBase.seconds + (cycles - timeBase.cycles) / timeBase.hz;
   }
 
   // The emulated clock: cycles run, plus cycles due but not yet run. An
@@ -442,6 +528,8 @@ export class Session {
 
   setSpeed(speed: Speed) {
     this.speed = speed;
+    this.cyclesOwed = 0;
+    this.setClockRate(speed === 'max' ? this.maxHz : SPEEDS.find((s) => s.id === speed)!.hz!);
     // Sound scheduled for real-time playback would play after newer changes.
     if (this.running) this.speaker.playNow(this.sound.state);
     this.bump();
@@ -473,12 +561,11 @@ export class Session {
   }
 
   // The speakers play what the sound chip holds, paused or not, so stepping
-  // through an OUT is heard, and a note left on keeps sounding. While running
-  // at real speed each change keeps its emulated timing; otherwise it plays
-  // as soon as it happens.
+  // through an OUT is heard, and a note left on keeps sounding. While running,
+  // each change keeps its emulated timing; when stepping, it plays at once.
   private playSound(change: SoundChange) {
-    const inTime = this.running && this.speed === 'real' && !this.stepping;
-    this.speaker.play(change, inTime ? change.cycles / CLOCK_HZ : undefined);
+    const inTime = this.running && !this.stepping;
+    this.speaker.play(change, inTime ? this.secondsAt(change.cycles) : undefined);
   }
 
   private snapshot() {

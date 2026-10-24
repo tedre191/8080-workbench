@@ -40,6 +40,13 @@ restarts. Edits that don't change the machine code, like comments, leave the
 running program alone. The editor indents for you and suggests instructions,
 the registers each one accepts, and the labels and constants in your program.
 
+**Speed.** 2 MHz is the Altair's real speed, and Max runs as fast as your
+computer can. 30 Hz and 500 Hz slow the CPU down and highlight what each
+instruction changes. The timer and sound keep real time at every speed, so
+games play at the right pace, but at the slow speeds a timer can be due again
+before its interrupt handler has finished: a program that uses it may never get
+past the handler.
+
 **Reference.** The Reference tab (F1) is a searchable cheat sheet: every
 instruction with its flags and timing, what each jump condition means after a
 compare, the assembler syntax, this machine's ports and colours, and snippets
