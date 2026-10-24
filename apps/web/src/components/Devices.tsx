@@ -104,43 +104,49 @@ function SoundScope({ voices }: { voices: readonly SoundState[] }) {
 
   useEffect(() => {
     const element = canvas.current!;
-    const ratio = window.devicePixelRatio || 1;
-    const { clientWidth: width, clientHeight: height } = element;
-    element.width = Math.round(width * ratio);
-    element.height = Math.round(height * ratio);
-    const context = element.getContext('2d')!;
-    context.scale(ratio, ratio);
-    const style = getComputedStyle(element);
-    const middle = height / 2;
+    const draw = () => {
+      const ratio = window.devicePixelRatio || 1;
+      const { clientWidth: width, clientHeight: height } = element;
+      element.width = Math.round(width * ratio);
+      element.height = Math.round(height * ratio);
+      const context = element.getContext('2d')!;
+      context.scale(ratio, ratio);
+      const style = getComputedStyle(element);
+      const middle = height / 2;
 
-    context.strokeStyle = style.getPropertyValue('--rule');
-    context.lineWidth = 1;
-    context.beginPath();
-    context.moveTo(0, middle);
-    context.lineTo(width, middle);
-    context.stroke();
+      context.strokeStyle = style.getPropertyValue('--rule');
+      context.lineWidth = 1;
+      context.beginPath();
+      context.moveTo(0, middle);
+      context.lineTo(width, middle);
+      context.stroke();
 
-    context.lineWidth = 1.25;
-    context.lineJoin = 'round';
-    voices.forEach((voice, i) => {
-      if (voice.note === 0 || voice.volume === 0) return;
-      context.strokeStyle = style.getPropertyValue(VOICE_COLOURS[i % VOICE_COLOURS.length]);
-      drawVoice(context, width, middle, voice);
-    });
+      context.lineWidth = 1.25;
+      context.lineJoin = 'round';
+      voices.forEach((voice, i) => {
+        if (voice.note === 0 || voice.volume === 0) return;
+        context.strokeStyle = style.getPropertyValue(VOICE_COLOURS[i % VOICE_COLOURS.length]);
+        drawVoice(context, width, middle, voice);
+      });
+    };
+    // The scope grows with the display on big screens, so redraw when it does.
+    const observer = new ResizeObserver(draw);
+    observer.observe(element);
+    return () => observer.disconnect();
   }, [voices]);
 
   const label = voices.map((voice, i) => `voice ${i}: ${describeVoice(voice)}`).join('; ');
   return (
-    <div className="scope-box">
+    <>
       <canvas ref={canvas} className="scope" role="img" aria-label={`Sound waveforms: ${label}`} />
-      <span className="scope-note mono" aria-hidden="true">
+      <div className="scope-notes mono" aria-hidden="true">
         {voices.map((voice, i) => (
           <span key={i} style={{ color: `var(${VOICE_COLOURS[i % VOICE_COLOURS.length]})` }}>
             {noteName(voice.note)}
           </span>
         ))}
-      </span>
-    </div>
+      </div>
+    </>
   );
 }
 

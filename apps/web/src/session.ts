@@ -19,6 +19,7 @@ import {
   type SoundChange,
   type StopReason,
 } from '@i8080/core';
+import { writePref } from './prefs';
 import { Speaker } from './speaker';
 
 export type Speed = 'slow' | 'medium' | 'real' | 'max';
@@ -50,6 +51,9 @@ export const SPEEDS: { id: Speed; label: string; title: string; hz?: number }[] 
   },
 ];
 
+// Where the chosen speed is remembered between visits.
+export const SPEED_KEY = 'i8080.speed';
+
 // Below this rate, run one instruction at a time and highlight its changes.
 const STEP_BY_STEP_BELOW_HZ = 1000;
 
@@ -76,6 +80,8 @@ const MAX_TERMINAL_CHARS = 64 * 1024;
 export interface Status {
   tone: 'info' | 'stop' | 'error' | 'ok';
   text: string;
+  // A button to show after the text, such as Undo.
+  action?: { label: string; run(): void };
 }
 
 // A program loaded as machine code instead of source. CP/M .COM programs
@@ -528,6 +534,7 @@ export class Session {
 
   setSpeed(speed: Speed) {
     this.speed = speed;
+    writePref(SPEED_KEY, speed);
     this.cyclesOwed = 0;
     this.setClockRate(speed === 'max' ? this.maxHz : SPEEDS.find((s) => s.id === speed)!.hz!);
     // Sound scheduled for real-time playback would play after newer changes.

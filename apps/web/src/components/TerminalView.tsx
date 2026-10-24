@@ -22,6 +22,7 @@ export function terminalKey(event: {
 
 export function TerminalView({ session }: { session: Session }) {
   const ref = useRef<HTMLDivElement>(null);
+  const touchInput = useRef<HTMLTextAreaElement>(null);
   const text = session.terminalText;
 
   // Keep the newest output in view.
@@ -30,6 +31,48 @@ export function TerminalView({ session }: { session: Session }) {
     const element = ref.current!;
     element.scrollTop = element.scrollHeight;
   }, [text]);
+
+  // Typing on an on-screen keyboard. Keys that `onKeyDown` knows are sent and
+  // cancelled there. The rest (Android keyboards report most keys as
+  // "Unidentified") arrive as edits to the hidden text field: whatever text
+  // lands in it is sent and cleared, once the keyboard has finished composing
+  // a word. Enter and Backspace leave nothing in the field, so they're caught
+  // as they happen.
+  useEffect(() => {
+    const input = touchInput.current!;
+    const send = () => {
+      for (const char of input.value) session.terminal.send(char.charCodeAt(0) & 0xff);
+      input.value = '';
+    };
+    const onBeforeInput = (event: InputEvent) => {
+      const key =
+        event.inputType === 'deleteContentBackward'
+          ? KEYS.Backspace
+          : event.inputType === 'insertLineBreak' || event.inputType === 'insertParagraph'
+            ? KEYS.Enter
+            : undefined;
+      if (key === undefined) return;
+      event.preventDefault();
+      session.terminal.send(key);
+    };
+    const onInput = (event: Event) => {
+      if (!(event as InputEvent).isComposing) send();
+    };
+    input.addEventListener('beforeinput', onBeforeInput);
+    input.addEventListener('input', onInput);
+    input.addEventListener('compositionend', send);
+    return () => {
+      input.removeEventListener('beforeinput', onBeforeInput);
+      input.removeEventListener('input', onInput);
+      input.removeEventListener('compositionend', send);
+    };
+  }, [session]);
+
+  // A touch screen has no keyboard until a text field has focus, so a tap on
+  // the terminal focuses the hidden one.
+  const onPointerUp = (event: React.PointerEvent) => {
+    if (event.pointerType === 'touch') touchInput.current!.focus({ preventScroll: true });
+  };
 
   const onKeyDown = (event: React.KeyboardEvent) => {
     const byte = terminalKey(event);
@@ -47,11 +90,22 @@ export function TerminalView({ session }: { session: Session }) {
       role="log"
       aria-label="Terminal. Focus it and type to send keys."
       onKeyDown={onKeyDown}
+      onPointerUp={onPointerUp}
       onPaste={(event) => {
         event.preventDefault();
         session.terminal.send(event.clipboardData.getData('text').replace(/\r?\n/g, '\r'));
       }}
     >
+      <textarea
+        ref={touchInput}
+        className="terminal-touch-input"
+        tabIndex={-1}
+        aria-label="Type to the terminal"
+        autoCapitalize="off"
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
+      />
       {text}
       <span className="cursor" />
       {!text && (

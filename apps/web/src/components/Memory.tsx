@@ -1,15 +1,18 @@
 // A hex view of all 64K. Only the rows on screen are rendered.
 
 import { hex16, type Machine } from '@i8080/core';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cx } from '../cx';
 import type { Session } from '../session';
 import { AddressInput, resolveAddress } from './AddressInput';
 import { HexField } from './HexField';
 
 const ROW_HEIGHT = 24; // also the size of each byte, so they're big enough to tap
-const BYTES_PER_ROW = 16;
-const ROW_COUNT = 0x10000 / BYTES_PER_ROW;
+// 16 bytes to a row, or 8 when the pane is too narrow to show 16 and their text.
+const WIDE_ROW_BYTES = 16;
+const NARROW_ROW_BYTES = 8;
+const WIDE_ROW_WIDTH = 558; // a 16-byte row, in pixels
+const NARROW_ROW_WIDTH = 330;
 
 type Follow = 'none' | 'pc' | 'sp' | 'hl' | 'de' | 'bc';
 
@@ -17,32 +20,47 @@ export function Memory({ session }: { session: Session }) {
   const cpu = session.machine.cpu;
   const scroller = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
-  const [viewHeight, setViewHeight] = useState(300);
+  const [view, setView] = useState({ width: 600, height: 300 });
   const [follow, setFollow] = useState<Follow>('none');
+  const rowBytes = view.width >= WIDE_ROW_WIDTH ? WIDE_ROW_BYTES : NARROW_ROW_BYTES;
+  const rowCount = 0x10000 / rowBytes;
 
   useEffect(() => {
     const element = scroller.current!;
-    const observer = new ResizeObserver(() => setViewHeight(element.clientHeight));
+    const observer = new ResizeObserver(() =>
+      setView({ width: element.clientWidth, height: element.clientHeight }),
+    );
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
+
+  // When the row length changes, keep the same address at the top.
+  const lastRowBytes = useRef(rowBytes);
+  useLayoutEffect(() => {
+    const element = scroller.current!;
+    const topAddress = Math.floor(element.scrollTop / ROW_HEIGHT) * lastRowBytes.current;
+    lastRowBytes.current = rowBytes;
+    element.scrollTop = Math.floor(topAddress / rowBytes) * ROW_HEIGHT;
+  }, [rowBytes]);
 
   // When following a register, scroll to it whenever it moves off screen.
   const followed = follow === 'none' ? undefined : cpu[follow];
   useEffect(() => {
     const element = scroller.current!;
     if (followed === undefined) return;
-    const y = Math.floor(followed / BYTES_PER_ROW) * ROW_HEIGHT;
+    const y = Math.floor(followed / rowBytes) * ROW_HEIGHT;
     const visible =
       y >= element.scrollTop && y <= element.scrollTop + element.clientHeight - ROW_HEIGHT;
-    if (!visible) scrollToAddress(element, followed);
-  }, [followed]);
+    if (!visible) scrollToAddress(element, followed, rowBytes);
+  }, [followed, rowBytes]);
 
   const firstRow = Math.floor(scrollTop / ROW_HEIGHT);
-  const lastRow = Math.min(firstRow + Math.ceil(viewHeight / ROW_HEIGHT) + 1, ROW_COUNT);
+  const lastRow = Math.min(firstRow + Math.ceil(view.height / ROW_HEIGHT) + 1, rowCount);
   const rows = [];
   for (let row = firstRow; row < lastRow; row++) {
-    rows.push(<MemoryRow key={row} session={session} address={row * BYTES_PER_ROW} />);
+    rows.push(
+      <MemoryRow key={row} session={session} address={row * rowBytes} rowBytes={rowBytes} />,
+    );
   }
 
   return (
@@ -51,7 +69,7 @@ export function Memory({ session }: { session: Session }) {
         <AddressInput
           onGo={(address) => {
             setFollow('none');
-            scrollToAddress(scroller.current!, address);
+            scrollToAddress(scroller.current!, address, rowBytes);
           }}
           resolve={(text) => resolveAddress(text, session.program?.symbols)}
         />
@@ -78,7 +96,13 @@ export function Memory({ session }: { session: Session }) {
         ref={scroller}
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
       >
-        <div className="mem-spacer" style={{ height: ROW_COUNT * ROW_HEIGHT }}>
+        <div
+          className="mem-spacer"
+          style={{
+            height: rowCount * ROW_HEIGHT,
+            minWidth: rowBytes === WIDE_ROW_BYTES ? WIDE_ROW_WIDTH : NARROW_ROW_WIDTH,
+          }}
+        >
           {rows}
         </div>
       </div>
@@ -87,16 +111,24 @@ export function Memory({ session }: { session: Session }) {
 }
 
 // Scroll so the row holding `address` is near the top.
-function scrollToAddress(element: HTMLElement, address: number) {
-  const row = Math.floor(address / BYTES_PER_ROW);
+function scrollToAddress(element: HTMLElement, address: number, rowBytes: number) {
+  const row = Math.floor(address / rowBytes);
   element.scrollTop = Math.max(0, (row - 2) * ROW_HEIGHT);
 }
 
-function MemoryRow({ session, address }: { session: Session; address: number }) {
+function MemoryRow({
+  session,
+  address,
+  rowBytes,
+}: {
+  session: Session;
+  address: number;
+  rowBytes: number;
+}) {
   const machine = session.machine;
   const bytes = [];
   let text = '';
-  for (let i = 0; i < BYTES_PER_ROW; i++) {
+  for (let i = 0; i < rowBytes; i++) {
     const byteAddress = address + i;
     const value = machine.peek(byteAddress);
     text += value >= 0x20 && value < 0x7f ? String.fromCharCode(value) : '·';
@@ -113,7 +145,7 @@ function MemoryRow({ session, address }: { session: Session; address: number }) 
   }
 
   return (
-    <div className="mem-row" style={{ top: (address / BYTES_PER_ROW) * ROW_HEIGHT }}>
+    <div className="mem-row" style={{ top: (address / rowBytes) * ROW_HEIGHT }}>
       <span className="addr">{hex16(address)}</span>
       <span className="mem-bytes">{bytes}</span>
       <span className="ascii">{text}</span>

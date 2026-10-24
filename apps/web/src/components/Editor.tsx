@@ -3,10 +3,10 @@
 // autocomplete and automatic indentation.
 
 import type { AssembleResult } from '@i8080/core';
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { complete, scanSymbols, type CompletionResult } from '../completion';
 import { cx } from '../cx';
-import { column, indent, newline, outdent, type Edit } from '../editing';
+import { indent, newline, outdent, type Edit } from '../editing';
 import { highlightLine } from '../highlight';
 import type { Session } from '../session';
 import { CompletionPopup } from './CompletionPopup';
@@ -17,12 +17,12 @@ interface Props {
   live: AssembleResult; // the current text, assembled: for errors and symbol values
   onChange(source: string): void;
   inputRef?: React.RefObject<HTMLTextAreaElement | null>;
+  // Wrap long lines to the width of the pane, instead of scrolling sideways.
+  wrap: boolean;
 }
 
 // These match the editor's CSS.
 const LINE_HEIGHT = 20;
-const PADDING_TOP = 8;
-const PADDING_LEFT = 14;
 const POPUP_WIDTH = 320;
 
 const NAVIGATION_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown']);
@@ -70,16 +70,46 @@ export function replaceText(
 interface Suggestions {
   result: CompletionResult;
   selected: number;
-  position: { x: number; y: number };
 }
 
-export function Editor({ session, source, live, onChange, inputRef }: Props) {
+// Where the character at `column` of a highlighted line is drawn, as a
+// rectangle on the page, or undefined for an empty line. (The highlighted copy
+// of the text is drawn exactly where the textarea's text is.)
+function characterRect(line: Element, column: number): DOMRect | undefined {
+  const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+  let last: Text | undefined;
+  for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+    // Every line ends with a newline that isn't part of the source.
+    const length = node.data.endsWith('\n') ? node.data.length - 1 : node.data.length;
+    if (column < length) {
+      const range = document.createRange();
+      range.setStart(node, column);
+      range.setEnd(node, column + 1);
+      return range.getBoundingClientRect();
+    }
+    column -= length;
+    if (length > 0) last = node;
+  }
+  if (!last) return undefined;
+  // Past the end of the line: just after its last character.
+  const end = last.data.endsWith('\n') ? last.data.length - 1 : last.data.length;
+  const range = document.createRange();
+  range.setStart(last, end - 1);
+  range.setEnd(last, end);
+  const rect = range.getBoundingClientRect();
+  return new DOMRect(rect.right, rect.top, 0, rect.height);
+}
+
+export function Editor({ session, source, live, onChange, inputRef, wrap }: Props) {
   const ownTextarea = useRef<HTMLTextAreaElement>(null);
   const textarea = inputRef ?? ownTextarea;
   const scroller = useRef<HTMLDivElement>(null);
   const codeArea = useRef<HTMLDivElement>(null);
-  const charMeasure = useRef<HTMLSpanElement>(null);
+  const highlight = useRef<HTMLPreElement>(null);
   const [suggestions, setSuggestions] = useState<Suggestions | null>(null);
+  const [popupPosition, setPopupPosition] = useState({ x: 0, y: 0 });
+  // Each line's height when wrapping, so the line numbers can line up.
+  const [lineHeights, setLineHeights] = useState<number[] | null>(null);
   // Where to put the selection after we change the text ourselves.
   const nextSelection = useRef<[number, number] | null>(null);
 
@@ -101,6 +131,67 @@ export function Editor({ session, source, live, onChange, inputRef }: Props) {
       ? program?.addressToLine.get(session.machine.cpu.pc)
       : undefined;
 
+  // Keep the current line in view whenever the UI follows each instruction:
+  // when paused, stepping, or running slowly. Only when the line moves within
+  // the same program, though, not when one is loaded: that happens as you
+  // type, and the page should open at the top.
+  const followsPc = session.highlightsChanges;
+  const shown = useRef<{ program: AssembleResult | null; line?: number }>(undefined);
+  useEffect(() => {
+    if (!followsPc) return;
+    const last = shown.current;
+    shown.current = { program, line: currentLine };
+    if (!last || last.program !== program || last.line === currentLine) return;
+    const line = currentLine && highlight.current?.children[currentLine - 1];
+    const element = scroller.current;
+    if (!line || !element) return;
+    const { offsetTop: top, offsetHeight: height } = line as HTMLElement;
+    const visible =
+      top >= element.scrollTop && top + height <= element.scrollTop + element.clientHeight;
+    if (!visible) element.scrollTop = top - element.clientHeight / 3;
+  }, [currentLine, followsPc, program]);
+
+  // When wrapping, measure how tall each line is drawn, whenever the text or
+  // the pane's width changes.
+  useLayoutEffect(() => {
+    if (!wrap) return;
+    const pre = highlight.current!;
+    const measure = () => {
+      const heights = Array.from(pre.children, (line) => (line as HTMLElement).offsetHeight);
+      setLineHeights((before) =>
+        before?.length === heights.length && before.every((h, i) => h === heights[i])
+          ? before
+          : heights,
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(pre);
+    return () => observer.disconnect();
+    // `highlighted` isn't read, but the lines need measuring again when it changes.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
+  }, [wrap, highlighted]);
+
+  // Place the suggestion list under the word being completed, but inside the
+  // visible area. This is measured once the new text has been drawn.
+  const suggestionFrom = suggestions?.result.from;
+  useLayoutEffect(() => {
+    if (suggestionFrom === undefined) return;
+    const before = source.slice(0, suggestionFrom);
+    const lineIndex = before.split('\n').length - 1;
+    const column = suggestionFrom - (before.lastIndexOf('\n') + 1);
+    const line = highlight.current!.children[lineIndex];
+    const area = codeArea.current!.getBoundingClientRect();
+    const char = characterRect(line, column);
+    const lineRect = line.getBoundingClientRect();
+    let x = (char ? char.left : lineRect.left) - area.left - 6;
+    const y = (char ? char.bottom : lineRect.top + LINE_HEIGHT) - area.top + 2;
+    const { scrollLeft, clientWidth } = scroller.current!;
+    const visibleRight = scrollLeft + clientWidth - codeArea.current!.offsetLeft;
+    x = Math.max(scrollLeft, Math.min(x, visibleRight - POPUP_WIDTH - 8));
+    setPopupPosition({ x, y });
+  }, [suggestionFrom, source]);
+
   useLayoutEffect(() => {
     if (nextSelection.current && textarea.current) {
       textarea.current.setSelectionRange(...nextSelection.current);
@@ -115,20 +206,6 @@ export function Editor({ session, source, live, onChange, inputRef }: Props) {
     replaceText(textarea.current!, edit.text, onChange);
   };
 
-  // Place the list under the word being completed, but inside the visible area.
-  const suggestionPosition = (text: string, from: number) => {
-    const line = text.slice(0, from).split('\n').length - 1;
-    // Measured here, when the list first opens, rather than on page load.
-    const charWidth = charMeasure.current!.getBoundingClientRect().width / 64;
-    let x = PADDING_LEFT + column(text, from) * charWidth - 6;
-    if (scroller.current && codeArea.current) {
-      const { scrollLeft, clientWidth } = scroller.current;
-      const visibleRight = scrollLeft + clientWidth - codeArea.current.offsetLeft;
-      x = Math.max(scrollLeft, Math.min(x, visibleRight - POPUP_WIDTH - 8));
-    }
-    return { x, y: PADDING_TOP + (line + 1) * LINE_HEIGHT + 2 };
-  };
-
   const showSuggestions = (
     text: string,
     cursor: number,
@@ -139,7 +216,7 @@ export function Editor({ session, source, live, onChange, inputRef }: Props) {
       setSuggestions(null);
       return;
     }
-    setSuggestions({ result, selected: 0, position: suggestionPosition(text, result.from) });
+    setSuggestions({ result, selected: 0 });
   };
 
   const acceptSuggestion = (index: number) => {
@@ -219,11 +296,13 @@ export function Editor({ session, source, live, onChange, inputRef }: Props) {
   };
 
   return (
-    <div className="editor">
+    <div className={cx('editor', wrap && 'wrap')}>
       <div className="editor-scroll" ref={scroller}>
         <div className="editor-gutter">
           {lines.map((_, i) => {
             const line = i + 1;
+            // A wrapped line's number stays at the top of its rows.
+            const height = (wrap && lineHeights?.[i]) || LINE_HEIGHT;
             return (
               <button
                 key={line}
@@ -238,6 +317,9 @@ export function Editor({ session, source, live, onChange, inputRef }: Props) {
                   errors.get(line) ?? (linesWithCode.has(line) ? 'Toggle breakpoint' : undefined)
                 }
                 tabIndex={-1}
+                style={
+                  height > LINE_HEIGHT ? { height, paddingBottom: height - LINE_HEIGHT } : undefined
+                }
                 onClick={() => session.toggleLineBreakpoint(line)}
               >
                 {line}
@@ -247,10 +329,7 @@ export function Editor({ session, source, live, onChange, inputRef }: Props) {
         </div>
 
         <div className="editor-code" ref={codeArea}>
-          <span ref={charMeasure} className="editor-measure" aria-hidden="true">
-            {'x'.repeat(64)}
-          </span>
-          <pre className="editor-highlight" aria-hidden="true">
+          <pre ref={highlight} className="editor-highlight" aria-hidden="true">
             {highlighted.map((content, i) => (
               <div
                 key={i}
@@ -272,7 +351,7 @@ export function Editor({ session, source, live, onChange, inputRef }: Props) {
             spellCheck={false}
             autoCapitalize="off"
             autoComplete="off"
-            wrap="off"
+            wrap={wrap ? 'soft' : 'off'}
             aria-label="Assembly source. Ctrl+Space for suggestions."
             aria-autocomplete="list"
             aria-controls={suggestions ? 'completion-list' : undefined}
@@ -281,13 +360,17 @@ export function Editor({ session, source, live, onChange, inputRef }: Props) {
             onKeyDown={onKeyDown}
             onBlur={() => setSuggestions(null)}
             onMouseDown={() => setSuggestions(null)}
-            style={{ height: `calc(${lines.length} * var(--code-lh) + 2 * var(--pad-code))` }}
+            style={
+              wrap
+                ? undefined
+                : { height: `calc(${lines.length} * var(--code-lh) + 2 * var(--pad-code))` }
+            }
           />
           {suggestions && (
             <CompletionPopup
               items={suggestions.result.items}
               selected={suggestions.selected}
-              {...suggestions.position}
+              {...popupPosition}
               onPick={acceptSuggestion}
               onHover={(selected) => setSuggestions({ ...suggestions, selected })}
             />

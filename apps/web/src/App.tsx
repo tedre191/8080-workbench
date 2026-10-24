@@ -14,12 +14,16 @@ import { Stack } from './components/Stack';
 import { terminalKey, TerminalView } from './components/TerminalView';
 import { Trace } from './components/Trace';
 import { CPU_TESTS, EXAMPLES } from './examples';
+import { readChoice, readPref, writePref } from './prefs';
 import { usePrograms, type OpenProgram } from './programs';
-import { Session } from './session';
+import { Session, SPEED_KEY, SPEEDS } from './session';
 import { readShareLink, shareLink } from './share';
 
 const DEBUG_TABS = ['Memory', 'Breakpoints', 'Trace', 'Reference'] as const;
 type DebugTab = (typeof DEBUG_TABS)[number];
+const DEBUG_TAB_KEY = 'i8080.debugTab';
+const WRAP_KEY = 'i8080.wrap';
+const SPEED_IDS = SPEEDS.map((speed) => speed.id);
 
 const REPOSITORY_URL = 'https://github.com/tedre191/8080-workbench';
 
@@ -34,14 +38,23 @@ function isTextField(target: EventTarget | null) {
 export function App() {
   const library = usePrograms();
   const { current } = library;
-  // Start with whatever program was open last time, already loaded.
+  // Start with whatever program was open last time, already loaded, at the
+  // speed it ran at.
   const [session] = useState(() => {
     const newSession = new Session();
+    const speed = readChoice(SPEED_KEY, SPEED_IDS);
+    if (speed) newSession.setSpeed(speed);
     newSession.openSource(current.source);
     return newSession;
   });
   useSyncExternalStore(session.subscribe, session.getVersion);
-  const [debugTab, setDebugTab] = useState<DebugTab>('Memory');
+  const [debugTab, setDebugTab] = useState<DebugTab>(
+    () => readChoice(DEBUG_TAB_KEY, DEBUG_TABS) ?? 'Memory',
+  );
+  useEffect(() => writePref(DEBUG_TAB_KEY, debugTab), [debugTab]);
+  // Wrap long lines in the editor: on unless turned off.
+  const [wrap, setWrap] = useState(() => readPref(WRAP_KEY) !== '0');
+  useEffect(() => writePref(WRAP_KEY, wrap ? '1' : '0'), [wrap]);
   const editorInput = useRef<HTMLTextAreaElement>(null);
 
   // Assemble as the source changes (under a millisecond for typical programs):
@@ -157,15 +170,34 @@ export function App() {
     }
   };
 
+  // Delete straight away, with an Undo button in the status bar.
   const onDelete = () => {
-    if (!confirm(`Delete "${current.name}"? This can't be undone.`)) return;
-    openProgram(library.remove(current.ref.id));
+    const { name } = current;
+    const { next, restore } = library.remove(current.ref.id);
+    openProgram(next);
+    session.setStatus({
+      tone: 'info',
+      text: `Deleted "${name}"`,
+      action: {
+        label: 'Undo',
+        run: () => {
+          openProgram(restore());
+          session.setStatus({ tone: 'ok', text: `Restored "${name}"` });
+        },
+      },
+    });
   };
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && session.stepping) {
         session.pause();
+        event.preventDefault();
+        return;
+      }
+      // By key position, as Alt+Z types a character on some keyboards.
+      if (event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'KeyZ') {
+        setWrap((on) => !on);
         event.preventDefault();
         return;
       }
@@ -209,6 +241,11 @@ export function App() {
         <span className="status-text" role="status">
           {status.text}
         </span>
+        {status.action && (
+          <button className="btn small status-action" onClick={status.action.run}>
+            {status.action.label}
+          </button>
+        )}
         <a className="repo-link" href={REPOSITORY_URL} target="_blank" rel="noreferrer">
           Source on GitHub
         </a>
@@ -228,6 +265,8 @@ export function App() {
             onRename={(name) => library.rename(current.ref.id, name)}
             onDelete={onDelete}
             onShare={onShare}
+            wrap={wrap}
+            onToggleWrap={() => setWrap(!wrap)}
           />
           {binary ? (
             <BinaryInfo binary={binary} />
@@ -239,6 +278,7 @@ export function App() {
                 live={live}
                 onChange={onEdit}
                 inputRef={editorInput}
+                wrap={wrap}
               />
               {live.errors.length > 0 && (
                 <ul className="error-list">
@@ -258,12 +298,27 @@ export function App() {
           <Disassembly session={session} />
         </section>
 
-        <section className="pane pane-cpu">
-          <h2 className="pane-title">Registers</h2>
-          <Registers session={session} />
-          <h2 className="pane-title">Stack</h2>
-          <Stack session={session} />
-        </section>
+        <div className="side">
+          <section className="pane pane-cpu">
+            <h2 className="pane-title">Registers</h2>
+            <Registers session={session} />
+            <h2 className="pane-title">Stack</h2>
+            <Stack session={session} />
+          </section>
+
+          <section className="pane pane-devices">
+            <h2 className="pane-title">
+              Devices
+              <button
+                className="btn small"
+                onClick={() => session.setMuted(!session.speaker.muted)}
+              >
+                {session.speaker.muted ? 'Unmute sound' : 'Mute sound'}
+              </button>
+            </h2>
+            <Devices session={session} />
+          </section>
+        </div>
 
         <section className="pane pane-debug">
           <div className="tabs" role="tablist">
@@ -301,16 +356,6 @@ export function App() {
             </button>
           </h2>
           <TerminalView session={session} />
-        </section>
-
-        <section className="pane pane-devices">
-          <h2 className="pane-title">
-            Devices
-            <button className="btn small" onClick={() => session.setMuted(!session.speaker.muted)}>
-              {session.speaker.muted ? 'Unmute sound' : 'Mute sound'}
-            </button>
-          </h2>
-          <Devices session={session} />
         </section>
       </main>
     </div>

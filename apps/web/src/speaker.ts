@@ -7,6 +7,7 @@
 // emulated time plus a little delay, which keeps short notes their length.
 
 import { Sound, WAVEFORMS, type SoundState, type Waveform } from '@i8080/core';
+import { readPref, writePref } from './prefs';
 
 // How far behind the emulator the sound plays, in seconds.
 const LATENCY = 0.06;
@@ -42,7 +43,7 @@ interface VoicePlayer {
 }
 
 export class Speaker {
-  muted = readMuted();
+  muted = readPref(MUTE_KEY) === '1';
   private context?: AudioContext;
   private master?: GainNode;
   private players: VoicePlayer[] = [];
@@ -86,11 +87,7 @@ export class Speaker {
 
   setMuted(muted: boolean) {
     this.muted = muted;
-    try {
-      localStorage.setItem(MUTE_KEY, muted ? '1' : '0');
-    } catch {
-      // Storage unavailable: the setting just won't be remembered.
-    }
+    writePref(MUTE_KEY, muted ? '1' : '0');
     if (this.master && this.context) {
       this.master.gain.setTargetAtTime(muted ? 0 : 1, this.context.currentTime, 0.01);
     }
@@ -188,12 +185,4 @@ function noise(context: AudioContext, buffer: AudioBuffer, output: GainNode): So
       source.playbackRate.cancelScheduledValues(time);
     },
   };
-}
-
-function readMuted() {
-  try {
-    return localStorage.getItem(MUTE_KEY) === '1';
-  } catch {
-    return false;
-  }
 }

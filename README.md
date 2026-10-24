@@ -28,20 +28,22 @@ pnpm dev
 
 ## Keys
 
-| Key             | Does                     |
-| --------------- | ------------------------ |
-| F1              | Open the reference       |
-| F5              | Run / pause              |
-| F11             | Step one instruction     |
-| F10             | Step over CALL/RST       |
-| Shift+F11       | Step out of a subroutine |
-| Esc             | Stop a step over or out  |
-| Ctrl+Space      | Show suggestions         |
-| Tab / Shift+Tab | Indent / outdent         |
+| Key             | Does                      |
+| --------------- | ------------------------- |
+| F1              | Open the reference        |
+| F5              | Run / pause               |
+| F11             | Step one instruction      |
+| F10             | Step over CALL/RST        |
+| Shift+F11       | Step out of a subroutine  |
+| Esc             | Stop a step over or out   |
+| Ctrl+Space      | Show suggestions          |
+| Tab / Shift+Tab | Indent / outdent          |
+| Alt+Z           | Turn line wrapping on/off |
 
 Click a line number to set a breakpoint, and click any register, flag or memory
 byte to change it. While a program runs, whatever you type outside the editor
-goes to its terminal.
+goes to its terminal. On a touch screen, tap the terminal to bring up the
+keyboard.
 
 ## The machine
 

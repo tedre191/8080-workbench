@@ -140,12 +140,22 @@ export function usePrograms() {
       if (name.trim()) updateProgram(id, { name: name.trim() });
     },
 
-    // Delete a program and open the next one (or the first example).
+    // Delete a program and open the next one (or the first example). Also
+    // returns `restore`, which puts the program back where it was and opens it.
     remove(id: string) {
+      const index = programs.findIndex((program) => program.id === id);
+      const removed = programs[index];
       const rest = programs.filter((program) => program.id !== id);
       const next = rest[0] ? fromUser(rest[0]) : find(DEFAULT_REF)!;
       setLibrary({ programs: rest, current: next.ref });
-      return next;
+      const restore = (): OpenProgram => {
+        setLibrary((before) => ({
+          programs: [...before.programs.slice(0, index), removed, ...before.programs.slice(index)],
+          current: { kind: 'user', id },
+        }));
+        return fromUser(removed);
+      };
+      return { next, restore };
     },
   };
 }

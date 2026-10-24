@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { cx } from '../cx';
 import { CPU_TESTS, EXAMPLES } from '../examples';
 import type { OpenProgram, ProgramRef, UserProgram } from '../programs';
 
@@ -14,6 +15,8 @@ interface Props {
   onRename(name: string): void;
   onDelete(): void;
   onShare(): void;
+  wrap: boolean;
+  onToggleWrap(): void;
 }
 
 // Each menu entry's value is "kind:id": user:<id>, example:<id>, rom:<name> or file:<name>.
@@ -80,13 +83,15 @@ export function ProgramBar(props: Props) {
       </label>
 
       {binaryName ? (
-        <span className="program-note">Machine code, no source</span>
+        <span className="program-tag" title="This program is machine code, with no source to edit">
+          Machine code
+        </span>
       ) : current.isExample ? (
         <span
-          className="program-note"
+          className="program-tag"
           title="Examples are templates: editing one saves your changes as a new program"
         >
-          Example: editing saves a copy
+          Example
         </span>
       ) : (
         <ProgramName
@@ -97,6 +102,17 @@ export function ProgramBar(props: Props) {
       )}
 
       <span className="program-actions">
+        {!binaryName && (
+          <button
+            className={cx('btn small icon-btn', props.wrap && 'active')}
+            aria-pressed={props.wrap}
+            aria-label="Wrap long lines"
+            onClick={props.onToggleWrap}
+            title="Wrap long lines to the width of the editor (Alt+Z)"
+          >
+            <WrapIcon />
+          </button>
+        )}
         <button className="btn small" onClick={props.onNew} title="Start a new program">
           New
         </button>
@@ -104,7 +120,7 @@ export function ProgramBar(props: Props) {
           className="btn small file-btn"
           title="Open an .asm source file, a CP/M .COM program or a raw binary"
         >
-          Open file…
+          Open…
           <input
             type="file"
             onChange={(e) => {
@@ -135,6 +151,25 @@ export function ProgramBar(props: Props) {
         )}
       </span>
     </div>
+  );
+}
+
+// Lines of text, the middle one wrapping round to the next line.
+function WrapIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="15"
+      height="15"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 3.5h12M2 8h9.5a2.25 2.25 0 0 1 0 4.5H8M2 12.5h3M9.5 11 8 12.5 9.5 14" />
+    </svg>
   );
 }
 
