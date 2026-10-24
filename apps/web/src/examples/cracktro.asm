@@ -1,8 +1,9 @@
 ; Cracktro: a plasma and a keygen tune, the way old cracktros did it.
 ;
 ;   Display   a sine plasma that flashes on the kick drum
-;   Sound     a chiptune on one voice: fast arpeggios for the chords, a
-;             bass, and drums squeezed in between
+;   Sound     a chiptune on three voices, in stereo: fast arpeggios for the
+;             chords bouncing between the speakers, a bass in the middle,
+;             and drums
 ;   Timer     50 ticks a second drive the music, like the C64 and Amiga
 ;             players that ran off the screen's refresh
 ;   LEDs      a beat meter
@@ -18,12 +19,14 @@
 DATA     EQU 11h
 LEDS     EQU 20h
 TIMER    EQU 30h
-NOTE     EQU 40h            ; sound: MIDI note (69 = A 440 Hz), 0 = off
-WAVE     EQU 41h
-VOLUME   EQU 42h            ; 0-15
+ARP      EQU 40h            ; the sound chip's voices: each has four ports,
+BASSV    EQU 44h            ; +0 MIDI note (69 = A 440 Hz, 0 = off),
+DRUM     EQU 48h            ; +1 waveform, +2 volume (0-15), +3 pan
 SQUARE   EQU 0              ; waveforms
 SAW      EQU 2
 NOISE    EQU 3
+LEFT     EQU 0C0h           ; pans: a signed byte, 80h far left, 7Fh far right
+RIGHT    EQU 40h
 VRAM     EQU 0F000h
 COLX     EQU 9000h          ; this frame's plasma value for each column
 
@@ -31,6 +34,7 @@ TICKS    EQU 6              ; ticks per row: 6 x 20 ms = 120 ms, 125 BPM
 KICK     EQU 1              ; what each row of the tune plays (see `rows`)
 SNARE    EQU 2
 BASS     EQU 4
+HAT      EQU 8
 
         ORG 0
         JMP main
@@ -41,6 +45,10 @@ BASS     EQU 4
 main:   LXI SP, 0E000h
         LXI H, greets
         CALL puts
+        MVI A, 9            ; the arpeggio: a square wave, not too loud
+        OUT ARP+2
+        MVI A, SAW          ; the bass: a sawtooth
+        OUT BASSV+1
         MVI A, 20           ; tick every 20 ms
         OUT TIMER
         EI
@@ -145,7 +153,10 @@ music:  PUSH PSW
         STA bar
 mu1:    XRA A
 mu2:    STA tick
-        CALL voice
+        CALL getrow
+        CALL playarp
+        CALL playbass
+        CALL playdrums
         CALL fade
         POP H
         POP D
@@ -154,46 +165,43 @@ mu2:    STA tick
         EI
         RET
 
-; Play this tick of the current row. A drum takes the row's first two
-; ticks; the bass or the arpeggio plays the rest.
-voice:  LDA rown
+; flags = what this row plays. The last bar ends with a snare fill.
+getrow: LDA rown
         MOV E, A
         MVI D, 0
         LXI H, rows
         DAD D
-        MOV B, M            ; B = what this row plays
-        LDA bar             ; the last bar ends with a snare fill
+        MOV B, M
+        LDA bar
         CPI 3
-        JNZ vo1
+        JNZ gr1
         MOV A, E
         CPI 12
-        JC vo1
+        JC gr1
         MOV A, B
         ANI BASS
         ORI SNARE
         MOV B, A
-vo1:    LDA bar
-        MOV E, A            ; DE = bar, to look up its chord
-        LDA tick
-        MOV C, A            ; C = tick in the row
-        CPI 2
-        JNC inst
-        MOV A, B
-        ANI KICK
-        JNZ kickdrum
-        MOV A, B
-        ANI SNARE
-        JNZ snaredrum
-inst:   MOV A, B
-        ANI BASS
-        JNZ bassnote
+gr1:    MOV A, B
+        STA flags
+        RET
 
-; An arpeggio: the chord's root, third and fifth, a tick each, twice.
-; Each row lifts it by its own amount, which turns the chords into a riff.
-arp:    MVI A, SQUARE
-        OUT WAVE
-        MVI A, 10
-        OUT VOLUME
+; Voice 0, the arpeggio: the chord's root, third and fifth, a tick each,
+; twice a row. Each row lifts it by its own amount, which turns the chords
+; into a riff, and each row it moves to the other speaker.
+playarp:
+        LDA tick
+        ORA A
+        JNZ ar0
+        LDA rown            ; a new row: even rows left, odd rows right
+        RRC
+        MVI A, LEFT
+        JNC pan
+        MVI A, RIGHT
+pan:    OUT ARP+3
+ar0:    LDA bar
+        MOV E, A
+        MVI D, 0
         LXI H, third
         DAD D
         MOV B, M            ; B = 3 (minor) or 4 (major)
@@ -208,7 +216,7 @@ arp:    MVI A, SQUARE
         POP PSW
         ADD M               ; + this row's lift
         MOV E, A            ; E = the arpeggio's root
-        MOV A, C            ; which note: tick mod 3
+        LDA tick            ; which note: tick mod 3
         CPI 3
         JC ar1
         SUI 3
@@ -221,36 +229,78 @@ ar1:    MOV C, A
         JM ar2
         SUB B               ; the fifth
         ADI 7
-ar2:    OUT NOTE
+ar2:    OUT ARP
         RET
 
-; The bass: a sawtooth, plucked, so it fades through the row.
-bassnote:
-        MVI A, SAW
-        OUT WAVE
-        MVI A, 14
-        SUB C
-        SUB C
-        OUT VOLUME
+; Voice 1, the bass: a sawtooth that starts loud on its rows and fades
+; until the next.
+playbass:
+        LDA tick
+        ORA A
+        JNZ bs1
+        LDA flags
+        ANI BASS
+        JZ bs1
+        LDA bar             ; a new note: this bar's
+        MOV E, A
+        MVI D, 0
         LXI H, bassn
         DAD D
         MOV A, M
-        OUT NOTE
+        OUT BASSV
+        MVI A, 14
+        STA bassvol
+bs1:    LDA bassvol         ; each tick it fades a little, down to 4
+        OUT BASSV+2
+        CPI 5
+        RC
+        DCR A
+        STA bassvol
+        RET
+
+; Voice 2, the drums: each takes the first tick or two of its row.
+playdrums:
+        LDA tick
+        CPI 2
+        JNC quiet
+        MOV C, A            ; C = tick in the row
+        LDA flags
+        MOV B, A
+        ANI KICK
+        JNZ kickdrum
+        MOV A, B
+        ANI SNARE
+        JNZ snaredrum
+        MOV A, B
+        ANI HAT
+        RZ
+        MOV A, C            ; the hi-hat: one tick of quiet, high noise
+        ORA A
+        JNZ quiet
+        MVI A, NOISE
+        OUT DRUM+1
+        MVI A, 4
+        OUT DRUM+2
+        MVI A, 127
+        OUT DRUM
+        RET
+quiet:  XRA A
+        OUT DRUM
         RET
 
 ; The kick: a square wave falling an octave. Its first tick flashes the
 ; plasma and fills the beat meter.
 kickdrum:
         MVI A, SQUARE
-        OUT WAVE
+        OUT DRUM+1
         MVI A, 15
-        OUT VOLUME
+        OUT DRUM+2
         MOV A, C
         ORA A
         MVI A, 45
         JZ ki1
         MVI A, 33
-ki1:    OUT NOTE
+ki1:    OUT DRUM
         MOV A, C
         ORA A
         RNZ
@@ -263,15 +313,15 @@ ki1:    OUT NOTE
 ; The snare: a burst of noise.
 snaredrum:
         MVI A, NOISE
-        OUT WAVE
+        OUT DRUM+1
         MOV A, C
         ORA A
         MVI A, 13
         JZ sn1
         MVI A, 6
-sn1:    OUT VOLUME
+sn1:    OUT DRUM+2
         MVI A, 100          ; high enough to play the noise at full speed
-        OUT NOTE
+        OUT DRUM
         RET
 
 ; Each tick, the beat meter drops a LED and the flash fades.
@@ -298,8 +348,8 @@ puts:   MOV A, M
 chord:  DB 69, 65, 72, 67   ; the chords' roots: A4, F4, C5, G4
 third:  DB 3, 4, 4, 4       ; minor, major, major, major
 bassn:  DB 45, 41, 48, 43   ; the bass: A2, F2, C3, G2
-rows:   DB KICK+BASS, 0, 0, BASS, SNARE, 0, KICK+BASS, 0
-        DB KICK+BASS, 0, BASS, 0, SNARE, 0, BASS, 0
+rows:   DB KICK+BASS, HAT, HAT, BASS+HAT, SNARE, HAT, KICK+BASS, HAT
+        DB KICK+BASS, HAT, BASS+HAT, HAT, SNARE, HAT, BASS+HAT, HAT
 lift:   DB 0, 0, 12, 0, 0, 12, 0, 7     ; semitones each row lifts the arpeggio
         DB 0, 12, 0, 7, 12, 0, 0, 12
 
@@ -309,17 +359,21 @@ greets: DB 12, 10
         DB "  |            p r e s e n t s           |", 10
         DB "  |        a 2 MHz cracktro, live        |", 10
         DB "  +--------------------------------------+", 10, 10
-        DB "  One voice, no samples: the chords are", 10
-        DB "  arpeggios, the drums steal two ticks a row.", 10, 10
+        DB "  Three voices, no samples: the chords are", 10
+        DB "  arpeggios bouncing between the speakers,", 10
+        DB "  over a bass and a drum machine.", 10, 10
         DB "  Greetings to Intel, MITS, Digital Research", 10
         DB "  and every scener who ever squeezed a chord", 10
-        DB "  out of a single voice.", 10, 0
+        DB "  out of a sound chip.", 10, 0
 
 ; Variables
 clock:  DB 0                ; timer ticks, for the plasma's time
 tick:   DB TICKS - 1        ; start just before row 0 of bar 0
 rown:   DB 15
 bar:    DB 3
+flags:  DB 0                ; what the current row plays
+bassvol:
+        DB 4
 beat:   DB 0                ; the beat meter's LEDs
 flash:  DB 0                ; added to every colour, for a moment, on a kick
 q1:     DB 0                ; row phases

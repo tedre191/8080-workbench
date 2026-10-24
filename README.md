@@ -79,7 +79,7 @@ outside the editor goes to its terminal.
 | Switches | IN 21h         | One switch per bit                                           |
 | Timer    | OUT 30h, n     | RST 1 every n ms (0 stops)                                   |
 | Display  | F000h–F3FFh    | 32×32 pixels, one byte each, 16 colours                      |
-| Sound    | OUT 40h–42h    | Note (MIDI number, 0 = off), waveform (0–3), volume (0–15)   |
+| Sound    | OUT 40h–4Bh    | 3 voices, 4 ports each: note, waveform, volume, stereo pan   |
 | CP/M     | ports FEh, FFh | Console support for `.COM` programs                          |
 
 ## Using the library

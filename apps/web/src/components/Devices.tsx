@@ -35,16 +35,18 @@ function DisplayCanvas({ session }: { session: Session }) {
 
 const NOTE_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 
-// "A4 · 440 Hz", or "Silent".
-function describeNote(note: number) {
-  if (note === 0) return 'Silent';
-  const name = NOTE_NAMES[note % 12] + (Math.floor(note / 12) - 1);
-  return `${name} · ${Math.round(Sound.frequency(note))} Hz`;
+// "A4", or "–" when silent.
+function noteName(note: number) {
+  return note === 0 ? '–' : NOTE_NAMES[note % 12] + (Math.floor(note / 12) - 1);
 }
 
-// "A4 · 440 Hz · square · volume 8", or "Silent".
-function describeSound({ note, waveform, volume }: SoundState) {
-  return note === 0 ? 'Silent' : `${describeNote(note)} · ${waveform} · volume ${volume}`;
+// "A4, 440 Hz, square, volume 8, 50% left", or "silent".
+function describeVoice({ note, waveform, volume, pan }: SoundState) {
+  if (note === 0) return 'silent';
+  const side =
+    pan === 0 ? 'centre' : `${Math.round(Math.abs(pan) / 1.27)}% ${pan < 0 ? 'left' : 'right'}`;
+  const hz = Math.round(Sound.frequency(note));
+  return `${noteName(note)}, ${hz} Hz, ${waveform}, volume ${volume}, ${side}`;
 }
 
 // How much time the scope shows across its width.
@@ -52,6 +54,8 @@ const SCOPE_SECONDS = 0.02;
 // How often the speaker's noise changes level at full pitch: a typical
 // audio sample rate.
 const NOISE_SAMPLE_HZ = 48_000;
+// Each voice's colour in the scope, as CSS variables.
+const VOICE_COLOURS = ['--verdigris', '--gold', '--sp'];
 
 // The waveform's level, -1 to 1, at `phase` (0 to 1) through a cycle.
 function level(waveform: Exclude<Waveform, 'noise'>, phase: number) {
@@ -60,11 +64,43 @@ function level(waveform: Exclude<Waveform, 'noise'>, phase: number) {
   return 2 * phase - 1;
 }
 
-// An oscilloscope view of what the sound chip is playing, drawn from its
-// state rather than the audio, so it shows even when muted.
-function SoundScope({ state }: { state: SoundState }) {
+// Draw one voice's waveform across the scope.
+function drawVoice(
+  context: CanvasRenderingContext2D,
+  width: number,
+  middle: number,
+  voice: SoundState,
+) {
+  const { note, waveform, volume } = voice;
+  const hz = Sound.frequency(note);
+  const amplitude = (volume / 15) * (middle - 3);
+  // Noise holds each random level for a while: longer at lower notes.
+  const hold = 1 / (NOISE_SAMPLE_HZ * Math.min(1, hz / NOISE_TOP_HZ));
+  let noiseUntil = -1;
+  let noise = 0;
+  context.beginPath();
+  for (let x = 0; x <= width; x += 0.5) {
+    const time = (x / width) * SCOPE_SECONDS;
+    let value;
+    if (waveform === 'noise') {
+      if (time >= noiseUntil) {
+        noise = Math.random() * 2 - 1;
+        noiseUntil = time + hold;
+      }
+      value = noise;
+    } else {
+      value = level(waveform, (time * hz) % 1);
+    }
+    context.lineTo(x, middle - amplitude * value);
+  }
+  context.stroke();
+}
+
+// An oscilloscope view of what the sound chip's voices are playing, each in
+// its own colour. It's drawn from the chip's state rather than the audio, so
+// it shows even when muted.
+function SoundScope({ voices }: { voices: readonly SoundState[] }) {
   const canvas = useRef<HTMLCanvasElement>(null);
-  const { note, waveform, volume } = state;
 
   useEffect(() => {
     const element = canvas.current!;
@@ -83,45 +119,26 @@ function SoundScope({ state }: { state: SoundState }) {
     context.moveTo(0, middle);
     context.lineTo(width, middle);
     context.stroke();
-    if (note === 0 || volume === 0) return;
 
-    const hz = Sound.frequency(note);
-    const amplitude = (volume / 15) * (middle - 3);
-    // Noise holds each random level for a while: longer at lower notes.
-    const hold = 1 / (NOISE_SAMPLE_HZ * Math.min(1, hz / NOISE_TOP_HZ));
-    let noiseUntil = -1;
-    let noise = 0;
-    context.strokeStyle = style.getPropertyValue('--verdigris');
-    context.lineWidth = 1.5;
+    context.lineWidth = 1.25;
     context.lineJoin = 'round';
-    context.beginPath();
-    for (let x = 0; x <= width; x += 0.5) {
-      const time = (x / width) * SCOPE_SECONDS;
-      let value;
-      if (waveform === 'noise') {
-        if (time >= noiseUntil) {
-          noise = Math.random() * 2 - 1;
-          noiseUntil = time + hold;
-        }
-        value = noise;
-      } else {
-        value = level(waveform, (time * hz) % 1);
-      }
-      context.lineTo(x, middle - amplitude * value);
-    }
-    context.stroke();
-  }, [note, waveform, volume]);
+    voices.forEach((voice, i) => {
+      if (voice.note === 0 || voice.volume === 0) return;
+      context.strokeStyle = style.getPropertyValue(VOICE_COLOURS[i % VOICE_COLOURS.length]);
+      drawVoice(context, width, middle, voice);
+    });
+  }, [voices]);
 
+  const label = voices.map((voice, i) => `voice ${i}: ${describeVoice(voice)}`).join('; ');
   return (
     <div className="scope-box">
-      <canvas
-        ref={canvas}
-        className="scope"
-        role="img"
-        aria-label={`Sound waveform: ${describeSound(state)}`}
-      />
+      <canvas ref={canvas} className="scope" role="img" aria-label={`Sound waveforms: ${label}`} />
       <span className="scope-note mono" aria-hidden="true">
-        {describeNote(note)}
+        {voices.map((voice, i) => (
+          <span key={i} style={{ color: `var(${VOICE_COLOURS[i % VOICE_COLOURS.length]})` }}>
+            {noteName(voice.note)}
+          </span>
+        ))}
       </span>
     </div>
   );
@@ -197,9 +214,9 @@ export function Devices({ session }: { session: Session }) {
 
         <section className="device">
           <h3>
-            Sound <span className="muted">OUT 40h–42h</span>
+            Sound <span className="muted">OUT 40h–4Bh</span>
           </h3>
-          <SoundScope state={session.sound.state} />
+          <SoundScope voices={session.sound.voices} />
         </section>
       </div>
     </div>

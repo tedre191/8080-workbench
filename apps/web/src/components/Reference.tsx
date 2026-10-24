@@ -44,9 +44,13 @@ export function Reference({ session, onInsert, onNewProgram }: Props) {
       `${hex16(display.address)}h`,
       `Display, ${display.width}×${display.height}: one byte per pixel, row by row, colours below`,
     ],
-    [`OUT ${hex8(sound.port)}h`, 'Sound: play MIDI note n (60 = middle C, 69 = A 440 Hz), 0 = off'],
-    [`OUT ${hex8(sound.port + 1)}h`, 'Sound waveform: 0 square, 1 triangle, 2 sawtooth, 3 noise'],
-    [`OUT ${hex8(sound.port + 2)}h`, 'Sound volume, 0–15'],
+    [
+      `OUT ${hex8(sound.port)}h, ${hex8(sound.port + 4)}h, ${hex8(sound.port + 8)}h`,
+      'Sound voices 0, 1, 2: play MIDI note n (60 = middle C, 69 = A 440 Hz), 0 = off',
+    ],
+    ['… +1', 'Sound voice’s waveform: 0 square, 1 triangle, 2 sawtooth, 3 noise'],
+    ['… +2', 'Sound voice’s volume, 0–15'],
+    ['… +3', 'Sound voice’s pan: 80h far left, 0 centre, 7Fh far right'],
     ['RST n', 'Calls address n × 8: 0000h, 0008h, … 0038h. Interrupts arrive as RST.'],
     ['LXI SP, 0E000h', 'A good place for the stack; it grows down.'],
   ];

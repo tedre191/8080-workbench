@@ -80,9 +80,9 @@ describe('examples', () => {
       expect(leds.value).toBe(1);
       expect(out()).toContain('Yum! Score 1');
       expect(v.filter((c) => c === 12).length).toBe(1); // new food placed
-      expect(sound.state.note).toBe(84); // the blip, until the next step
+      expect(sound.voices[0].note).toBe(84); // the blip, until the next step
       m.run({ cycles: 180 * MS });
-      expect(sound.state.note).toBe(0);
+      expect(sound.voices[0].note).toBe(0);
       expect(notes).toContain(84);
     });
 
@@ -97,10 +97,10 @@ describe('examples', () => {
       // Keep going up into the top wall (15 more steps).
       m.run({ cycles: 17 * 180 * MS });
       expect(out()).toMatch(/Crash! Final score \d+/);
-      expect(sound.state).toMatchObject({ waveform: 'noise' }); // fading out
+      expect(sound.voices[0]).toMatchObject({ waveform: 'noise' }); // fading out
       tty.send('w'); // pressed during the crash: ignored
       m.run({ cycles: 600 * MS });
-      expect(sound.state).toEqual({ note: 0, waveform: 'square', volume: 15 });
+      expect(sound.voices[0]).toEqual({ note: 0, waveform: 'square', volume: 15, pan: 0 });
       expect(out()).toContain('Press any key to play again.');
       expect(out().match(/Go!/g)?.length).toBe(1);
       tty.send(' ');
@@ -144,12 +144,12 @@ describe('examples', () => {
       // Answer wrong: the low sawtooth buzz, all pads lit, then the score.
       tty.send('1234'[(seq(0) + 1) & 3]);
       m.run({ cycles: 100 * MS });
-      expect(sound.state).toMatchObject({ note: 31, waveform: 'sawtooth' });
+      expect(sound.voices[0]).toMatchObject({ note: 31, waveform: 'sawtooth' });
       expect(pads.map((p) => v[p])).toEqual([10, 12, 14, 9]);
       m.run({ cycles: 2500 * MS });
       expect(out()).toContain('Wrong! Rounds completed: 1');
       expect(out()).toContain('Press any key to play again.');
-      expect(sound.state).toEqual({ note: 0, waveform: 'square', volume: 15 });
+      expect(sound.voices[0]).toEqual({ note: 0, waveform: 'square', volume: 15, pan: 0 });
       expect(pads.map((p) => v[p])).toEqual([2, 4, 6, 1]);
     });
 
@@ -173,38 +173,43 @@ describe('examples', () => {
   describe('cracktro', () => {
     const MS = 2000; // T-states per millisecond at 2 MHz
 
-    it('plays the tune and draws a moving plasma', () => {
+    it('plays three voices in stereo and draws a moving plasma', () => {
       const { m, leds, display, sound, out } = boot('cracktro');
-      // What plays each tick, sampled between ticks (the player sets the
-      // waveform and the note a few cycles apart).
-      const played: string[] = [];
-      const listen = (ms: number) => {
-        for (let t = 0; t < ms; t += 20) {
-          m.run({ cycles: 20 * MS });
-          const { note, waveform } = sound.state;
-          if (note > 0 && played.at(-1) !== `${waveform} ${note}`) {
-            played.push(`${waveform} ${note}`);
-          }
-        }
-      };
+      // What each voice plays, sampled between ticks (the player sets a
+      // voice's waveform and note a few cycles apart).
+      const played: string[][] = [[], [], []];
+      const sample = () =>
+        sound.voices.forEach(({ note, waveform }, voice) => {
+          const heard = note > 0 ? `${waveform} ${note}` : '-';
+          if (played[voice].at(-1) !== heard) played[voice].push(heard);
+        });
 
-      m.run({ cycles: 30 * MS }); // the first tick, at 20 ms: row 0, a kick
+      m.run({ cycles: 30 * MS }); // the first tick, at 20 ms: row 0
       expect(out()).toContain('W O R K B E N C H');
       expect(leds.value).toBe(0x7f); // the beat meter, full and falling
-      const { note, waveform } = sound.state;
-      played.push(`${waveform} ${note}`);
-      listen(600);
-      // Row 0: the kick falls an octave, then the bass. Row 1: an A minor
-      // arpeggio, A C E. Row 4: the snare.
-      expect(played.slice(0, 6)).toEqual([
-        'square 45',
-        'square 33',
-        'sawtooth 45',
-        'square 69',
-        'square 72',
-        'square 76',
-      ]);
-      expect(played).toContain('noise 100');
+      sample();
+      for (let t = 0; t < 600; t += 20) {
+        m.run({ cycles: 20 * MS });
+        sample();
+      }
+
+      // Voice 0: an A minor arpeggio, A C E, from the first tick.
+      expect(played[0].slice(0, 3)).toEqual(['square 69', 'square 72', 'square 76']);
+      // Voice 1: the bass, A2, in the middle.
+      expect(played[1][0]).toBe('sawtooth 45');
+      expect(sound.voices[1].pan).toBe(0);
+      // Voice 2: the kick falls an octave, then a hi-hat and the snare.
+      expect(played[2].slice(0, 3)).toEqual(['square 45', 'square 33', '-']);
+      expect(played[2]).toContain('noise 127');
+      expect(played[2]).toContain('noise 100');
+
+      // The arpeggio moves between the speakers from row to row.
+      const pans = new Set<number>();
+      for (let t = 0; t < 300; t += 20) {
+        m.run({ cycles: 20 * MS });
+        pans.add(sound.voices[0].pan);
+      }
+      expect([...pans].sort()).toEqual([-64, 64]);
 
       const colours = new Set(display.vram);
       expect(colours.size).toBeGreaterThanOrEqual(6); // of the ramp's 8

@@ -278,9 +278,9 @@ wait:   HLT
     expect(m.cpu.b).toBe(4);
   });
 
-  it('sound reports each change with the cycle it happened at', () => {
+  it('sound reports each change with its voice and the cycle it happened at', () => {
     const { m } = machineWith(`
-        MVI A, 3        ; noise
+        MVI A, 3        ; voice 0: noise
         OUT 41h
         MVI A, 8
         OUT 42h
@@ -288,24 +288,29 @@ wait:   HLT
         OUT 40h
         IN 40h
         MOV B, A
-        XRA A
-        OUT 40h
+        MVI A, 0C0h     ; voice 2: panned left
+        OUT 4Bh
+        MVI A, 57
+        OUT 48h
         HLT`);
     const sound = m.add(new Sound());
     const changes: unknown[] = [];
     sound.onChange.on((change) => changes.push(change));
     m.run({ cycles: 1000 });
-    // Stamped with the cycle each OUT starts at: after 7, 24, 41 and 70 T-states.
+    const quiet = { note: 0, waveform: 'square', volume: 15, pan: 0 };
+    // Stamped with the cycle each OUT starts at.
     expect(changes).toEqual([
-      { note: 0, waveform: 'noise', volume: 15, cycles: 7 },
-      { note: 0, waveform: 'noise', volume: 8, cycles: 24 },
-      { note: 69, waveform: 'noise', volume: 8, cycles: 41 },
-      { note: 0, waveform: 'noise', volume: 8, cycles: 70 },
+      { ...quiet, waveform: 'noise', voice: 0, cycles: 7 },
+      { ...quiet, waveform: 'noise', volume: 8, voice: 0, cycles: 24 },
+      { ...quiet, waveform: 'noise', volume: 8, note: 69, voice: 0, cycles: 41 },
+      { ...quiet, pan: -64, voice: 2, cycles: 73 },
+      { ...quiet, pan: -64, note: 57, voice: 2, cycles: 90 },
     ]);
     expect(m.cpu.b).toBe(69);
+    expect(sound.voices[1]).toEqual(quiet);
     expect(Sound.frequency(69)).toBe(440);
     expect(Sound.frequency(81)).toBeCloseTo(880);
     m.reset();
-    expect(sound.state).toEqual({ note: 0, waveform: 'square', volume: 15 });
+    expect(sound.voices).toEqual([quiet, quiet, quiet]);
   });
 });

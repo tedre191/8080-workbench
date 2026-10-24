@@ -62,7 +62,7 @@ in slices without blocking (one per animation frame, say), pass
 | `Switches` | IN 21h                | Eight switches                                         |
 | `Timer`    | OUT 30h               | Interrupts with RST 1 every n ms                       |
 | `Display`  | F000h                 | 32×32 memory-mapped pixels, 16 colours                 |
-| `Sound`    | OUT 40h–42h           | One voice: note, waveform, volume (`onChange` to play) |
+| `Sound`    | OUT 40h–4Bh           | 3 voices: note, waveform, volume, pan (`onChange`)     |
 | `Rom`      | (address you give it) | Read-only memory                                       |
 
 Ports and addresses are constructor options. A `Timer` counts its

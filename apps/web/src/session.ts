@@ -95,7 +95,7 @@ export class Session {
   readonly timer = this.machine.add(new Timer({ clockHz: CLOCK_HZ }));
   readonly display = this.machine.add(new Display());
   readonly sound = this.machine.add(new Sound());
-  readonly speaker = new Speaker();
+  readonly speaker = new Speaker(this.sound.voices.length);
 
   // What's loaded: either an assembled program or a binary.
   program: AssembleResult | null = null;
@@ -308,7 +308,7 @@ export class Session {
     this.running = false;
     this.stepping = null;
     cancelAnimationFrame(this.frameRequest);
-    this.speaker.playNow(this.sound.state);
+    this.speaker.playNow(this.sound.voices);
     this.status = { tone: 'info', text: `Paused at ${hex16(this.machine.cpu.pc)}h` };
     this.bump();
   }
@@ -373,7 +373,7 @@ export class Session {
     } else {
       this.running = false;
       this.stepping = null;
-      this.speaker.playNow(this.sound.state);
+      this.speaker.playNow(this.sound.voices);
       this.status = this.describe(stop);
     }
     this.bump();
@@ -531,7 +531,7 @@ export class Session {
     this.cyclesOwed = 0;
     this.setClockRate(speed === 'max' ? this.maxHz : SPEEDS.find((s) => s.id === speed)!.hz!);
     // Sound scheduled for real-time playback would play after newer changes.
-    if (this.running) this.speaker.playNow(this.sound.state);
+    if (this.running) this.speaker.playNow(this.sound.voices);
     this.bump();
   }
 
@@ -565,7 +565,7 @@ export class Session {
   // each change keeps its emulated timing; when stepping, it plays at once.
   private playSound(change: SoundChange) {
     const inTime = this.running && !this.stepping;
-    this.speaker.play(change, inTime ? this.secondsAt(change.cycles) : undefined);
+    this.speaker.play(change.voice, change, inTime ? this.secondsAt(change.cycles) : undefined);
   }
 
   private snapshot() {

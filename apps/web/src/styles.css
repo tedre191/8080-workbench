@@ -1238,6 +1238,8 @@ input.byte.hexfield {
   position: absolute;
   top: 2px;
   left: 4px;
+  display: flex;
+  gap: 6px;
   font-size: 11px;
   color: var(--silk-dim);
   background: rgba(0, 0, 0, 0.6);
