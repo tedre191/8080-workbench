@@ -218,4 +218,39 @@ describe('examples', () => {
       expect(display.vram).not.toEqual(before);
     });
   });
+
+  describe('piano', () => {
+    const MS = 2000; // T-states per millisecond at 2 MHz
+    const px = (x: number, y: number) => y * 32 + x;
+
+    it('plays each key at once from its interrupt, chords included', () => {
+      const { m, tty, leds, display, sound, out } = boot('piano');
+      m.run({ cycles: 50 * MS });
+      expect(out()).toContain('KEYBOARD PIANO');
+
+      tty.send('a'); // C
+      m.run({ cycles: 1 * MS });
+      expect(sound.voices[0]).toEqual({ note: 60, waveform: 'triangle', volume: 15, pan: -96 });
+
+      tty.send('dg'); // E and G together: a C major chord on three voices
+      m.run({ cycles: 2 * MS });
+      expect(sound.voices.map((v) => v.note)).toEqual([60, 64, 67]);
+      expect(out()).toContain('C4 E4 G4 ');
+      m.run({ cycles: 100 * MS });
+      expect(leds.value).toBe(0x80 | 0x20 | 0x08); // under C, E and G
+      expect(display.vram[px(1, 26)]).toBe(12); // the C key, lit red
+      expect(display.vram[px(1, 22)]).toBe(12); // and its note rising, a row a frame
+
+      tty.send('xk'); // an octave up, then the top C, on the first voice again
+      m.run({ cycles: 2 * MS });
+      expect(out()).toContain('Octave 5');
+      expect(sound.voices[0].note).toBe(84);
+      expect(sound.voices[0].pan).toBe(96);
+
+      m.run({ cycles: 800 * MS }); // everything fades out
+      expect(sound.voices.map((v) => v.note)).toEqual([0, 0, 0]);
+      expect(leds.value).toBe(0);
+      expect(display.vram[px(1, 26)]).toBe(7); // the C key, grey again
+    });
+  });
 });

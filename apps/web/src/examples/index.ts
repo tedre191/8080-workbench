@@ -3,6 +3,7 @@ import display from './display.asm?raw';
 import hello from './hello.asm?raw';
 import interrupts from './interrupts.asm?raw';
 import leds from './leds.asm?raw';
+import piano from './piano.asm?raw';
 import primes from './primes.asm?raw';
 import simon from './simon.asm?raw';
 import snake from './snake.asm?raw';
@@ -24,6 +25,7 @@ export const EXAMPLES: Example[] = [
   { id: 'snake', name: 'Snake', source: snake, usesDevices: true },
   { id: 'simon', name: 'Simon', source: simon, usesDevices: true },
   { id: 'cracktro', name: 'Cracktro', source: cracktro, usesDevices: true },
+  { id: 'piano', name: 'Keyboard piano', source: piano, usesDevices: true },
 ];
 
 // Where the classic CPU test programs are downloaded from when opened.
