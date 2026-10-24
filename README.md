@@ -17,10 +17,11 @@ program in it.
 
 ## Running it locally
 
-You need Node 24 and pnpm:
+You need Node 26 and pnpm. Node no longer comes with corepack, so install
+pnpm with npm:
 
 ```sh
-corepack enable
+npm install -g pnpm
 pnpm install
 pnpm dev
 ```
