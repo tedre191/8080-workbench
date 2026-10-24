@@ -8,6 +8,10 @@
 ;
 ; Each round adds a pad to the sequence; repeat it all to go on.
 ; While it runs, just type: keys go to the terminal.
+;
+; Play it at 2 MHz or Max. The timer keeps real time at every speed, and at
+; 30 Hz and 500 Hz it ticks again before the CPU has finished handling the
+; last tick, so the game never gets going.
 
 STATUS   EQU 10h
 DATA     EQU 11h

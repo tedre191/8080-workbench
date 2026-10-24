@@ -8,6 +8,10 @@
 ;   Sound     a blip when you eat, a crash when you hit something
 ;
 ; While it runs, just type: keys go to the terminal.
+;
+; Play it at 2 MHz or Max. The timer keeps real time at every speed, and at
+; 30 Hz and 500 Hz the CPU is too slow to keep up with it: the snake crawls,
+; or stops altogether.
 
 STATUS   EQU 10h
 DATA     EQU 11h
