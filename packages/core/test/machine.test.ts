@@ -94,6 +94,29 @@ describe('Machine', () => {
     expect(m.cpu.pc).toBe(6);
   });
 
+  it('steps over and out in slices', () => {
+    const source = ' LXI SP, 100h\n CALL subr\n HLT\nsubr: MVI B, 50\nloop: DCR B\n JNZ loop\n RET';
+    const { m } = machineWith(source);
+    m.step();
+    const over = m.stepOverCondition()!;
+    let stop;
+    do stop = m.run({ cycles: 30, skipBreakpointAtStart: true, until: over });
+    while (stop.kind === 'budget');
+    expect(stop.kind).toBe('condition');
+    expect(m.cpu.pc).toBe(6);
+
+    m.reset();
+    m.cpu.sp = 0x100;
+    m.step(); // LXI
+    m.step(); // CALL -> in sub
+    const out = m.stepOutCondition();
+    do stop = m.run({ cycles: 30, skipBreakpointAtStart: true, until: out });
+    while (stop.kind === 'budget');
+    expect(stop.kind).toBe('condition');
+    expect(m.cpu.pc).toBe(6);
+    expect(m.stepOverCondition()).toBeNull(); // HLT isn't a call
+  });
+
   it('records an execution trace', () => {
     const { m } = machineWith(' NOP\n NOP\n HLT');
     m.run({ cycles: 100 });

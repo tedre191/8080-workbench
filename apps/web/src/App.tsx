@@ -118,6 +118,11 @@ export function App() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && session.stepping) {
+        session.pause();
+        event.preventDefault();
+        return;
+      }
       switch (event.key) {
         case 'F1':
           setDebugTab('Reference');

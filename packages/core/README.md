@@ -40,7 +40,9 @@ const stop = m.run({ cycles: 1_000_000 }); // prints Hello!, then { kind: 'halt'
 something stops it, and returns why: `budget`, `breakpoint`, `watchpoint`,
 `halt` (with interrupts off, nothing can wake the CPU), `stop` (something
 called `machine.stop()`), `condition` (your `until` predicate) or `error`.
-`step()`, `stepOver()` and `stepOut()` build on it.
+`step()`, `stepOver()` and `stepOut()` build on it. To run a step over or out
+in slices without blocking (one per animation frame, say), pass
+`stepOverCondition()` or `stepOutCondition()` as `until` to each `run`.
 
 - `machine.breakpoints` is a `Set` of addresses.
 - `addWatchpoint({ start, end, read, write })` stops on memory access, and

@@ -406,37 +406,42 @@ export class Machine implements Bus {
   // Like `step`, but runs a whole CALL or RST until it returns. `budget`
   // stops a subroutine that never returns from hanging the caller.
   stepOver(budget = 50_000_000) {
-    const instruction = OPCODES[this.peek(this.cpu.pc)];
-    if (instruction.flow !== 'call' && instruction.flow !== 'rst') return this.step();
-
-    const returnAddress = (this.cpu.pc + instruction.length) & 0xffff;
-    const stack = this.cpu.sp;
-    const stop = this.run({
-      cycles: budget,
-      skipBreakpointAtStart: true,
-      until: ({ cpu }) => cpu.pc === returnAddress && cpu.sp === stack,
-    });
-    return orNull(stop, 'condition');
+    const until = this.stepOverCondition();
+    if (!until) return this.step();
+    return orNull(this.run({ cycles: budget, skipBreakpointAtStart: true, until }), 'condition');
   }
 
   // Run until the current subroutine returns: a return instruction that
   // leaves the stack higher than where we started.
   stepOut(budget = 50_000_000) {
+    const until = this.stepOutCondition();
+    return orNull(this.run({ cycles: budget, skipBreakpointAtStart: true, until }), 'condition');
+  }
+
+  // The `until` condition `stepOver` runs with, or null if the instruction at
+  // PC isn't a CALL or RST. For running a step over in slices, say one per
+  // animation frame: pass it to every `run`.
+  stepOverCondition(): ((machine: Machine) => boolean) | null {
+    const instruction = OPCODES[this.peek(this.cpu.pc)];
+    if (instruction.flow !== 'call' && instruction.flow !== 'rst') return null;
+
+    const returnAddress = (this.cpu.pc + instruction.length) & 0xffff;
+    const stack = this.cpu.sp;
+    return ({ cpu }) => cpu.pc === returnAddress && cpu.sp === stack;
+  }
+
+  // The `until` condition `stepOut` runs with. It must see every instruction
+  // from now on, so pass it to every `run` until it returns true.
+  stepOutCondition(): (machine: Machine) => boolean {
     const stack = this.cpu.sp;
     const isReturn = (machine: Machine) => OPCODES[machine.peek(machine.cpu.pc)].flow === 'ret';
-    let justReturned = false;
     let atReturn = isReturn(this);
 
-    const stop = this.run({
-      cycles: budget,
-      skipBreakpointAtStart: true,
-      until: (machine) => {
-        justReturned = atReturn && machine.cpu.sp > stack;
-        atReturn = isReturn(machine);
-        return justReturned;
-      },
-    });
-    return orNull(stop, 'condition');
+    return (machine) => {
+      const justReturned = atReturn && machine.cpu.sp > stack;
+      atReturn = isReturn(machine);
+      return justReturned;
+    };
   }
 }
 

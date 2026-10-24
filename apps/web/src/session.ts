@@ -38,6 +38,9 @@ export const SPEEDS: { id: Speed; label: string; title: string; hz?: number }[] 
 const STEP_BY_STEP_BELOW_HZ = 1000;
 
 const CLOCK_HZ = 2_000_000;
+// How long a step over or out may run before it moves to the frame loop, so
+// the page stays responsive while a subroutine waits for a key.
+const QUICK_STEP_CYCLES = 200_000;
 const MAX_TERMINAL_CHARS = 64 * 1024;
 
 export interface Status {
@@ -71,6 +74,8 @@ export class Session {
   lineBreakpoints = new Set<number>();
 
   running = false;
+  // While running: the condition a step over or out is waiting for, or null for a plain run.
+  stepping: ((machine: Machine) => boolean) | null = null;
   speed: Speed = 'real';
   status: Status = { tone: 'info', text: '' };
   terminalText = '';
@@ -146,7 +151,8 @@ export class Session {
   // is reloaded too, so the program's variables start over. If the program
   // was running, it keeps running.
   restart() {
-    const wasRunning = this.running;
+    // A step over or out that was still going isn't a run to resume.
+    const wasRunning = this.running && !this.stepping;
     this.pause();
     this.machine.ram.fill(0);
     this.display.clear();
@@ -244,19 +250,24 @@ export class Session {
   run() {
     if (this.running) return;
     this.snapshot();
+    this.startRunning();
+    this.status = { tone: 'info', text: 'Running' };
+    this.bump();
+  }
+
+  private startRunning() {
     this.running = true;
     this.resuming = true;
     this.cyclesOwed = 0;
     this.lastFrameTime = performance.now();
     this.rateSample = { time: this.lastFrameTime, clock: this.clock() };
-    this.status = { tone: 'info', text: 'Running' };
     this.frameRequest = requestAnimationFrame(this.onFrame);
-    this.bump();
   }
 
   pause() {
     if (!this.running) return;
     this.running = false;
+    this.stepping = null;
     cancelAnimationFrame(this.frameRequest);
     this.status = { tone: 'info', text: `Paused at ${hex16(this.machine.cpu.pc)}h` };
     this.bump();
@@ -267,11 +278,35 @@ export class Session {
   }
 
   stepOver() {
-    this.debugStep(() => this.machine.stepOver());
+    const until = this.machine.stepOverCondition();
+    if (until) this.runUntil(until, 'Stepping over');
+    else this.step();
   }
 
   stepOut() {
-    this.debugStep(() => this.machine.stepOut());
+    this.runUntil(this.machine.stepOutCondition(), 'Stepping out');
+  }
+
+  // Run at full speed until `until` is true. Most steps finish at once; one
+  // that doesn't (say, a call that waits for a key) carries on in the frame
+  // loop, where it can be paused.
+  private runUntil(until: (machine: Machine) => boolean, what: string) {
+    this.pause();
+    this.snapshot();
+    const stop = this.machine.run({
+      cycles: QUICK_STEP_CYCLES,
+      skipBreakpointAtStart: true,
+      until,
+    });
+    if (stop.kind === 'budget') {
+      this.stepping = until;
+      this.startRunning();
+      this.resuming = false;
+      this.status = { tone: 'info', text: `${what}… (Esc or F5 to stop)` };
+    } else {
+      this.status = this.describe(stop);
+    }
+    this.bump();
   }
 
   private debugStep(action: () => StopReason | null) {
@@ -297,6 +332,7 @@ export class Session {
       this.frameRequest = requestAnimationFrame(this.onFrame);
     } else {
       this.running = false;
+      this.stepping = null;
       this.status = this.describe(stop);
     }
     this.bump();
@@ -308,13 +344,15 @@ export class Session {
     let skipBreakpointAtStart = this.resuming;
     this.resuming = false;
 
-    const hz = SPEEDS.find((speed) => speed.id === this.speed)?.hz;
+    // Steps over and out run at full speed, whatever the speed setting.
+    const until = this.stepping ?? undefined;
+    const hz = until ? undefined : SPEEDS.find((speed) => speed.id === this.speed)?.hz;
     if (hz === undefined) {
       // Max: run in chunks until most of a 60 fps frame is used up.
       const deadline = performance.now() + 12;
       let stop: StopReason = { kind: 'budget' };
       while (stop.kind === 'budget' && performance.now() < deadline) {
-        stop = this.machine.run({ cycles: 250_000, skipBreakpointAtStart });
+        stop = this.machine.run({ cycles: 250_000, skipBreakpointAtStart, until });
         skipBreakpointAtStart = false;
       }
       return stop;

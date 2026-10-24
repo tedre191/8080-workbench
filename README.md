@@ -58,6 +58,7 @@ outside the editor goes to its terminal.
 | F11             | Step one instruction     |
 | F10             | Step over CALL/RST       |
 | Shift+F11       | Step out of a subroutine |
+| Esc             | Stop a step over or out  |
 | Ctrl+Space      | Show suggestions         |
 | Tab / Shift+Tab | Indent / outdent         |
 
