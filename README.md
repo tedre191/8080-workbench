@@ -30,7 +30,8 @@ pnpm dev             # the workbench, at http://localhost:5173
 the classic CPU test programs. **New** starts a program and **Open file…**
 opens an `.asm` source, a CP/M `.COM` program or a raw binary (loaded at
 0000h). Your programs are saved in the browser; rename one by editing its name,
-and use **Download** to save it as an `.asm` file. Examples are templates:
+use **Download** to save it as an `.asm` file, and **Share** to copy a link that
+opens it for anyone (the source is in the link itself). Examples are templates:
 editing one saves your changes as a new program.
 
 **Editing.** There's no assemble step. The source is checked as you type, and

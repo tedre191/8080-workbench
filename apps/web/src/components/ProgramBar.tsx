@@ -13,6 +13,7 @@ interface Props {
   onNew(): void;
   onRename(name: string): void;
   onDelete(): void;
+  onShare(): void;
 }
 
 // Each menu entry's value is "kind:id": user:<id>, example:<id>, rom:<name> or file:<name>.
@@ -116,6 +117,15 @@ export function ProgramBar(props: Props) {
         {!binaryName && (
           <button className="btn small" onClick={download} title="Save the source as an .asm file">
             Download
+          </button>
+        )}
+        {!binaryName && (
+          <button
+            className="btn small"
+            onClick={props.onShare}
+            title="Copy a link that opens this program"
+          >
+            Share
           </button>
         )}
         {!binaryName && !current.isExample && (

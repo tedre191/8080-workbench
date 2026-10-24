@@ -1,5 +1,5 @@
 import { assemble } from '@i8080/core';
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { BinaryInfo } from './components/BinaryInfo';
 import { Breakpoints } from './components/Breakpoints';
 import { Devices } from './components/Devices';
@@ -13,9 +13,10 @@ import { Registers } from './components/Registers';
 import { Stack } from './components/Stack';
 import { terminalKey, TerminalView } from './components/TerminalView';
 import { Trace } from './components/Trace';
-import { CPU_TESTS } from './examples';
+import { CPU_TESTS, EXAMPLES } from './examples';
 import { usePrograms, type OpenProgram } from './programs';
 import { Session } from './session';
+import { readShareLink, shareLink } from './share';
 
 const DEBUG_TABS = ['Memory', 'Breakpoints', 'Trace', 'Reference'] as const;
 type DebugTab = (typeof DEBUG_TABS)[number];
@@ -111,6 +112,51 @@ export function App() {
     else onEdit(text);
   };
 
+  // Open the program in a share link. A program with the same source is
+  // reopened rather than copied, so reloading the page doesn't add another.
+  const openShared = useEffectEvent(async () => {
+    // Take the link out of the address bar first, so it's only opened once.
+    const hash = location.hash;
+    if (!new URLSearchParams(hash.slice(1)).has('code')) return;
+    history.replaceState(null, '', location.pathname + location.search);
+    const shared = await readShareLink(hash);
+    if (!shared) {
+      session.setStatus({
+        tone: 'error',
+        text: "Couldn't open the shared program: the link is damaged",
+      });
+      return;
+    }
+
+    const example = EXAMPLES.find((e) => e.source === shared.source);
+    const own = library.programs.find((p) => p.source === shared.source);
+    if (example) openProgram(library.open({ kind: 'example', id: example.id }));
+    else if (own) openProgram(library.open({ kind: 'user', id: own.id }));
+    else openProgram(library.create(shared.name, shared.source));
+    session.setStatus({ tone: 'ok', text: `Opened the shared program "${shared.name}"` });
+  });
+  useEffect(() => {
+    const open = () => void openShared();
+    open();
+    window.addEventListener('hashchange', open);
+    return () => window.removeEventListener('hashchange', open);
+  }, []);
+
+  const onShare = async () => {
+    const link = await shareLink({ name: current.name, source });
+    try {
+      await navigator.clipboard.writeText(link);
+      session.setStatus({ tone: 'ok', text: 'Link copied: anyone who opens it gets this program' });
+    } catch {
+      // No clipboard access: put the link in the address bar instead.
+      history.replaceState(null, '', link);
+      session.setStatus({
+        tone: 'ok',
+        text: 'Copy the link in the address bar to share this program',
+      });
+    }
+  };
+
   const onDelete = () => {
     if (!confirm(`Delete "${current.name}"? This can't be undone.`)) return;
     openProgram(library.remove(current.ref.id));
@@ -181,6 +227,7 @@ export function App() {
             onNew={() => openProgram(library.create())}
             onRename={(name) => library.rename(current.ref.id, name)}
             onDelete={onDelete}
+            onShare={onShare}
           />
           {binary ? (
             <BinaryInfo binary={binary} />
