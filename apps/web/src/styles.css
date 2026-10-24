@@ -12,8 +12,11 @@
   --panel-raised: #3a3346;
   --rule: #463e53;
   --silk: #e9e3ef;
-  --silk-dim: #a69cb3;
-  --silk-faint: #776d85;
+  --silk-dim: #b4abc0;
+  --silk-faint: #9890a4; /* the dimmest text that still meets WCAG AA contrast */
+  --rule-strong: #776d85; /* borders that need to stand out more than --rule */
+  --scrollbar: #4d4459;
+  --header-height: 38px; /* every pane header, so they line up */
   --gold: #d2ae5c;
   --gold-wash: rgba(210, 174, 92, 0.16);
   --led: #ff5340;
@@ -46,6 +49,36 @@ body,
 #root {
   height: 100%;
   margin: 0;
+}
+
+/* Dark, thin scrollbars. Chrome and Safari use the ::-webkit-scrollbar rules
+   (which also hide the arrow buttons); Firefox uses the standard properties. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--rule-strong);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar) transparent;
+  }
 }
 
 body {
@@ -141,7 +174,8 @@ code {
 
 .pane-title {
   margin: 0;
-  padding: 7px 12px 6px;
+  height: var(--header-height);
+  padding: 0 12px;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -150,7 +184,7 @@ code {
   background: var(--ceramic-deep);
   flex: none;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
 }
 
@@ -254,7 +288,7 @@ code {
 .bank-name {
   font-size: 12px;
   color: var(--silk-dim);
-  border-bottom: 1px solid var(--silk-faint);
+  border-bottom: 1px solid var(--rule-strong);
   padding-bottom: 1px;
 }
 
@@ -313,6 +347,13 @@ code {
   margin: 0 4px;
 }
 
+/* On narrow screens the buttons wrap, which would leave the divider dangling. */
+@media (max-width: 720px) {
+  .divider {
+    display: none;
+  }
+}
+
 .btn {
   appearance: none;
   border: 1px solid var(--rule);
@@ -326,7 +367,7 @@ code {
 }
 
 .btn:hover {
-  border-color: var(--silk-faint);
+  border-color: var(--rule-strong);
   background: #443c51;
 }
 
@@ -634,6 +675,7 @@ code {
 
 .panel-tools {
   display: flex;
+  min-height: var(--header-height);
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
@@ -675,7 +717,7 @@ code {
   flex: 1;
   overflow: auto;
   padding: 4px 0;
-  font: 12.5px / 20px var(--font-mono);
+  font: 12.5px / 24px var(--font-mono); /* 24px rows keep breakpoint dots big enough to tap */
 }
 
 .disasm-label {
@@ -726,7 +768,7 @@ code {
   border: 0;
   background: none;
   width: 24px;
-  height: 20px;
+  height: 24px;
   cursor: pointer;
   position: relative;
 }
@@ -734,8 +776,8 @@ code {
 .bp-dot::after {
   content: '';
   position: absolute;
-  left: 9px;
-  top: 6px;
+  left: 8px;
+  top: 8px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -1002,6 +1044,7 @@ input.byte.hexfield {
 .tabs {
   display: flex;
   gap: 2px;
+  height: var(--header-height);
   padding: 0 8px;
   border-bottom: 1px solid var(--rule);
   background: var(--ceramic-deep);
@@ -1014,7 +1057,7 @@ input.byte.hexfield {
   appearance: none;
   border: 0;
   background: none;
-  padding: 7px 12px 6px;
+  padding: 2px 12px 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--silk-faint);
@@ -1334,7 +1377,8 @@ input.byte.hexfield {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
+  min-height: var(--header-height);
+  padding: 4px 10px;
   border-bottom: 1px solid var(--rule);
   background: var(--ceramic-deep);
   flex: none;
@@ -1415,7 +1459,7 @@ input.byte.hexfield {
   max-height: calc(8 * 22px + 6px);
   overflow-y: auto;
   background: var(--panel-raised);
-  border: 1px solid var(--silk-faint);
+  border: 1px solid var(--rule-strong);
   border-radius: var(--radius-m);
 }
 
@@ -1527,7 +1571,7 @@ input.byte.hexfield {
   background: var(--ceramic-deep);
   border: 1px solid var(--rule);
   border-radius: var(--radius-s);
-  padding: 3px 8px;
+  padding: 2px 8px;
   font-size: 13px;
 }
 
