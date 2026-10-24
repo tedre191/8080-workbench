@@ -1,3 +1,4 @@
+import cracktro from './cracktro.asm?raw';
 import display from './display.asm?raw';
 import hello from './hello.asm?raw';
 import interrupts from './interrupts.asm?raw';
@@ -22,6 +23,7 @@ export const EXAMPLES: Example[] = [
   { id: 'interrupts', name: 'Timer interrupts', source: interrupts, usesDevices: true },
   { id: 'snake', name: 'Snake', source: snake, usesDevices: true },
   { id: 'simon', name: 'Simon', source: simon, usesDevices: true },
+  { id: 'cracktro', name: 'Cracktro', source: cracktro, usesDevices: true },
 ];
 
 // Where the classic CPU test programs are downloaded from when opened.

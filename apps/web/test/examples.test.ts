@@ -169,4 +169,48 @@ describe('examples', () => {
       expect(out().match(/Go!/g)?.length).toBe(2);
     });
   });
+
+  describe('cracktro', () => {
+    const MS = 2000; // T-states per millisecond at 2 MHz
+
+    it('plays the tune and draws a moving plasma', () => {
+      const { m, leds, display, sound, out } = boot('cracktro');
+      // What plays each tick, sampled between ticks (the player sets the
+      // waveform and the note a few cycles apart).
+      const played: string[] = [];
+      const listen = (ms: number) => {
+        for (let t = 0; t < ms; t += 20) {
+          m.run({ cycles: 20 * MS });
+          const { note, waveform } = sound.state;
+          if (note > 0 && played.at(-1) !== `${waveform} ${note}`) {
+            played.push(`${waveform} ${note}`);
+          }
+        }
+      };
+
+      m.run({ cycles: 30 * MS }); // the first tick, at 20 ms: row 0, a kick
+      expect(out()).toContain('W O R K B E N C H');
+      expect(leds.value).toBe(0x7f); // the beat meter, full and falling
+      const { note, waveform } = sound.state;
+      played.push(`${waveform} ${note}`);
+      listen(600);
+      // Row 0: the kick falls an octave, then the bass. Row 1: an A minor
+      // arpeggio, A C E. Row 4: the snare.
+      expect(played.slice(0, 6)).toEqual([
+        'square 45',
+        'square 33',
+        'sawtooth 45',
+        'square 69',
+        'square 72',
+        'square 76',
+      ]);
+      expect(played).toContain('noise 100');
+
+      const colours = new Set(display.vram);
+      expect(colours.size).toBeGreaterThanOrEqual(6); // of the ramp's 8
+      const before = display.vram.slice();
+      m.run({ cycles: 500 * MS });
+      expect(display.vram).not.toEqual(before);
+    });
+  });
 });
