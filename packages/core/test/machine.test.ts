@@ -5,6 +5,7 @@ import {
   Leds,
   Machine,
   Rom,
+  Sound,
   Switches,
   Terminal,
   Timer,
@@ -224,5 +225,36 @@ wait:   HLT
     m.add(new Timer());
     m.run({ cycles: 2_000_000 * 0.0105 }); // 10.5 ms at 2 MHz
     expect(m.cpu.b).toBe(10);
+  });
+
+  it('sound reports each change with the cycle it happened at', () => {
+    const { m } = machineWith(`
+        MVI A, 3        ; noise
+        OUT 41h
+        MVI A, 8
+        OUT 42h
+        MVI A, 69       ; A 440
+        OUT 40h
+        IN 40h
+        MOV B, A
+        XRA A
+        OUT 40h
+        HLT`);
+    const sound = m.add(new Sound());
+    const changes: unknown[] = [];
+    sound.onChange.on((change) => changes.push(change));
+    m.run({ cycles: 1000 });
+    // Stamped with the cycle each OUT starts at: after 7, 24, 41 and 70 T-states.
+    expect(changes).toEqual([
+      { note: 0, waveform: 'noise', volume: 15, cycles: 7 },
+      { note: 0, waveform: 'noise', volume: 8, cycles: 24 },
+      { note: 69, waveform: 'noise', volume: 8, cycles: 41 },
+      { note: 0, waveform: 'noise', volume: 8, cycles: 70 },
+    ]);
+    expect(m.cpu.b).toBe(69);
+    expect(Sound.frequency(69)).toBe(440);
+    expect(Sound.frequency(81)).toBeCloseTo(880);
+    m.reset();
+    expect(sound.state).toEqual({ note: 0, waveform: 'square', volume: 15 });
   });
 });

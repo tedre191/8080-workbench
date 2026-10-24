@@ -62,6 +62,7 @@ in slices without blocking (one per animation frame, say), pass
 | `Switches` | IN 21h                | Eight switches                                         |
 | `Timer`    | OUT 30h               | Interrupts with RST 1 every n ms                       |
 | `Display`  | F000h                 | 32×32 memory-mapped pixels, 16 colours                 |
+| `Sound`    | OUT 40h–42h           | One voice: note, waveform, volume (`onChange` to play) |
 | `Rom`      | (address you give it) | Read-only memory                                       |
 
 Ports and addresses are constructor options.
@@ -82,14 +83,14 @@ A device has a `name` and an `attach(machine)` method. In `attach` it can:
 ```ts
 import type { Device, Machine } from '@i8080/core';
 
-/** A random number generator on port 40h. */
+/** A random number generator on port 50h. */
 class Rng implements Device {
   readonly name = 'RNG';
   attach(m: Machine) {
-    m.mapPort(0x40, { in: () => Math.floor(Math.random() * 256) });
+    m.mapPort(0x50, { in: () => Math.floor(Math.random() * 256) });
   }
   detach(m: Machine) {
-    m.unmapPort(0x40);
+    m.unmapPort(0x50);
   }
 }
 
