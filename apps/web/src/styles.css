@@ -1229,7 +1229,7 @@ input.byte.hexfield {
 
 .switches {
   display: flex;
-  gap: 6px;
+  gap: 0;
   padding: 4px 0 6px;
 }
 
@@ -1238,6 +1238,7 @@ input.byte.hexfield {
   border: 0;
   background: none;
   padding: 0;
+  width: 24px; /* wider than the lever, so it's easy to hit */
   display: flex;
   flex-direction: column;
   align-items: center;
