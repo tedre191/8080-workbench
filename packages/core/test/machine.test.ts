@@ -136,12 +136,17 @@ main:   LXI SP, 1000h
         EI
 wait:   HLT
         JMP wait`);
-    m.run({ cycles: 200 });
+    // Halted with interrupts on, it waits: something may still interrupt.
+    expect(m.run({ cycles: 200 }).kind).toBe('budget');
     expect(m.cpu.halted).toBe(true);
+    expect(m.cycles).toBeGreaterThanOrEqual(200);
     m.interrupt(0xcf);
     m.run({ cycles: 200 });
     expect(m.cpu.b).toBe(1);
     expect(m.cpu.halted).toBe(true);
+    // With interrupts off, nothing can wake it.
+    m.cpu.inte = false;
+    expect(m.run({ cycles: 200 })).toEqual({ kind: 'halt', pc: m.cpu.pc });
   });
 
   it('maps memory regions and lets later mappings win', () => {
@@ -206,6 +211,70 @@ loop:   IN 10h
     m.run({ cycles: 1000 });
     expect(leds.value).toBe(0x5a);
     expect(disp.vram[5]).toBe(0x5a);
+  });
+
+  it('terminal interrupts until every waiting key is read', () => {
+    const { m } = machineWith(`
+        ORG 0
+        JMP main
+        ORG 38h         ; RST 7: read one key per interrupt
+        IN 11h
+        MOV M, A
+        INX H
+        EI
+        RET
+main:   LXI SP, 1000h
+        LXI H, 2000h
+        MVI A, 80h      ; interrupt when a key arrives
+        OUT 10h
+        EI
+wait:   HLT
+        JMP wait`);
+    const tty = m.add(new Terminal());
+    m.run({ cycles: 200 });
+    tty.send('abc'); // three keys before the handler can run
+    m.run({ cycles: 1000 });
+    expect([0, 1, 2, 3].map((i) => m.peek(0x2000 + i))).toEqual([0x61, 0x62, 0x63, 0]);
+    expect(m.cpu.hl).toBe(0x2003); // one interrupt per key, no more
+    expect(m.cpu.halted).toBe(true);
+  });
+
+  it('services the highest RST first and loses no interrupt', () => {
+    const { m } = machineWith(`
+        ORG 0
+        JMP main
+        ORG 08h         ; RST 1, the timer: log a 1
+        MVI M, 1
+        INX H
+        EI
+        RET
+        ORG 38h         ; RST 7, the terminal: read the key, log a 7
+        IN 11h
+        MVI M, 7
+        INX H
+        EI
+        RET
+main:   LXI SP, 1000h
+        LXI H, 2000h
+        MVI A, 80h
+        OUT 10h
+        MVI A, 2        ; a tick every 2 ms
+        OUT 30h
+spin:   LDA 3000h       ; interrupts off until the test says go
+        ORA A
+        JZ spin
+        EI
+idle:   HLT
+        JMP idle`);
+    const tty = m.add(new Terminal());
+    m.add(new Timer());
+    m.run({ cycles: 2000 * 3 }); // a tick is waiting...
+    tty.send('x'); // ...and now a key
+    m.run({ cycles: 100 });
+    expect(m.peek(0x2000)).toBe(0); // nothing serviced yet
+    m.poke(0x3000, 1);
+    m.run({ cycles: 300 });
+    expect([m.peek(0x2000), m.peek(0x2001)]).toEqual([7, 1]);
   });
 
   it('timer raises periodic interrupts', () => {

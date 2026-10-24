@@ -42,7 +42,7 @@ export type StopReason =
       value: number;
       pc: number;
     }
-  | { kind: 'halt'; pc: number } // halted with nothing that can wake it
+  | { kind: 'halt'; pc: number } // halted with interrupts off: nothing can wake it
   | { kind: 'stop'; message?: string } // someone called machine.stop()
   | { kind: 'condition' } // the `until` callback returned true
   | { kind: 'error'; error: unknown };
@@ -71,6 +71,34 @@ export interface RunOptions {
   skipBreakpointAtStart?: boolean;
 }
 
+// A device's interrupt request line. The device raises it with the
+// instruction to run, normally an RST, and it stays raised until the device
+// lowers it: a serial port, say, while a byte is waiting to be read. A line
+// made with `releaseOnAcknowledge` lowers itself as soon as the CPU accepts
+// the interrupt instead, for one interrupt per event, like a timer's tick.
+export class InterruptLine {
+  active = false;
+  opcode = 0xff;
+
+  constructor(
+    private readonly onChange: () => void,
+    readonly releaseOnAcknowledge: boolean,
+  ) {}
+
+  raise(opcode = this.opcode) {
+    if (this.active && opcode === this.opcode) return;
+    this.opcode = opcode & 0xff;
+    this.active = true;
+    this.onChange();
+  }
+
+  lower() {
+    if (!this.active) return;
+    this.active = false;
+    this.onChange();
+  }
+}
+
 interface ScheduledEvent {
   time: number;
   callback: () => void;
@@ -93,6 +121,12 @@ export class Machine implements Bus {
   private pages: (MemoryRegion[] | null)[] = new Array(256).fill(null);
   private inputs: (PortHandler | null)[] = new Array(256).fill(null);
   private outputs: (PortHandler | null)[] = new Array(256).fill(null);
+
+  private interruptLines: InterruptLine[] = [];
+  // The line whose interrupt the CPU has been offered.
+  private offeredLine: InterruptLine | null = null;
+  // For `interrupt()`: one request at a time, gone once accepted.
+  private oneShotLine = this.interruptLine({ releaseOnAcknowledge: true });
 
   private events: ScheduledEvent[] = []; // sorted by time
   private nextEventTime = Infinity;
@@ -250,10 +284,42 @@ export class Machine implements Bus {
     this.nextEventTime = this.events[0]?.time ?? Infinity;
   }
 
-  // Request an interrupt. `opcode` is the instruction the device supplies,
-  // normally an RST (0xC7 + 8n). The default, 0xFF, is RST 7.
+  // Interrupts. Each device has its own request line. When several are
+  // raised, the CPU is offered the highest RST, the way Intel's 8214
+  // priority chip ranked them; the others wait their turn, none is lost.
+
+  // A new interrupt request line, for a device to raise and lower.
+  interruptLine({ releaseOnAcknowledge = false } = {}) {
+    const line = new InterruptLine(() => this.updateInterrupts(), releaseOnAcknowledge);
+    this.interruptLines.push(line);
+    return line;
+  }
+
+  // Request one interrupt. `opcode` is the instruction the device supplies,
+  // normally an RST (0xC7 + 8n). The default, 0xFF, is RST 7. The request is
+  // gone once the CPU accepts it.
   interrupt(opcode = 0xff) {
-    this.cpu.interrupt(opcode);
+    this.oneShotLine.raise(opcode);
+  }
+
+  // Offer the CPU the interrupt of the highest raised line, if any.
+  private updateInterrupts() {
+    let best: InterruptLine | null = null;
+    for (const line of this.interruptLines) {
+      if (line.active && (!best || line.opcode > best.opcode)) best = line;
+    }
+    this.offeredLine = best;
+    if (best) this.cpu.interrupt(best.opcode);
+    else this.cpu.clearInterrupt();
+  }
+
+  // The CPU accepted the interrupt it was offered.
+  acknowledgeInterrupt() {
+    const line = this.offeredLine;
+    if (line?.releaseOnAcknowledge) line.active = false;
+    // The CPU has dropped its request; offer the next one (it waits until
+    // the handler turns interrupts back on).
+    this.updateInterrupts();
   }
 
   // Breakpoints, watchpoints and the trace
@@ -349,6 +415,8 @@ export class Machine implements Bus {
   // Reset the CPU and every device. Memory and breakpoints are kept.
   reset() {
     this.cpu.reset();
+    for (const line of this.interruptLines) line.active = false;
+    this.offeredLine = null;
     this.events = [];
     this.nextEventTime = Infinity;
     this.stopRequest = null;
@@ -372,8 +440,9 @@ export class Machine implements Bus {
           // Only an interrupt wakes a halted CPU, and only if interrupts are enabled.
           if (!cpu.inte) return { kind: 'halt', pc: cpu.pc };
           if (!cpu.interruptPending) {
-            // Nothing happens until a scheduled event fires: skip ahead to it.
-            if (this.nextEventTime === Infinity) return { kind: 'halt', pc: cpu.pc };
+            // Nothing happens until an interrupt: from a scheduled event, or
+            // from outside, like a key arriving. Skip ahead to the next event,
+            // or wait out the budget.
             cpu.cycles = Math.max(cpu.cycles, Math.min(this.nextEventTime, endTime));
             if (this.stopRequest) return this.stopRequest;
             continue;

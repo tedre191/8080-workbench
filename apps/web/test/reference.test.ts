@@ -1,4 +1,4 @@
-import { assemble, Display, Machine, OPCODES } from '@i8080/core';
+import { assemble, Display, Machine, OPCODES, Terminal } from '@i8080/core';
 import { describe, expect, it } from 'vitest';
 import { INSTRUCTION_GROUPS, SNIPPETS } from '../src/reference';
 
@@ -42,5 +42,20 @@ describe('reference', () => {
   it('"Multiply by 10" multiplies', () => {
     const { m } = run('Multiply by 10', (machine) => (machine.cpu.a = 7));
     expect(m.cpu.a).toBe(70);
+  });
+
+  it('"Read keys with an interrupt" echoes keys that arrive together', () => {
+    const code = SNIPPETS.find((s) => s.title === 'Read keys with an interrupt')!.code;
+    const m = new Machine();
+    const tty = m.add(new Terminal());
+    let out = '';
+    tty.onOutput.on((byte) => (out += String.fromCharCode(byte)));
+    for (const seg of assemble(code).segments) m.load(seg.address, seg.bytes);
+    m.run({ cycles: 1000 });
+    expect(m.cpu.halted).toBe(true); // asleep until a key
+    tty.send('hello');
+    m.run({ cycles: 5000 });
+    expect(out).toBe('hello');
+    expect(m.cpu.halted).toBe(true);
   });
 });

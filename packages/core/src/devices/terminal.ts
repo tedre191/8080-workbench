@@ -1,5 +1,5 @@
 import { Emitter } from '../emitter';
-import type { Device, Machine } from '../machine';
+import type { Device, InterruptLine, Machine } from '../machine';
 
 export interface TerminalOptions {
   // Status/control port (6850 ACIA style). Default 0x10.
@@ -17,6 +17,10 @@ export interface TerminalOptions {
 //   OUT status: 0x03 = master reset, bit 7 = enable receive interrupt
 //   IN  data:   next received byte
 //   OUT data:   transmit a byte
+//
+// With the receive interrupt on, the interrupt line stays raised while a
+// byte is waiting, as on the real chip, so a handler that reads one byte per
+// interrupt still gets every byte.
 //
 // Other devices (e.g. the CP/M BDOS shim) can also use it directly through
 // `print` and `readByte`.
@@ -38,7 +42,7 @@ export class Terminal implements Device {
 
   private input: number[] = []; // keys waiting to be read
   private interruptOnInput = false;
-  private machine?: Machine;
+  private line?: InterruptLine;
 
   constructor(options: TerminalOptions = {}) {
     this.statusPort = options.statusPort ?? 0x10;
@@ -47,12 +51,13 @@ export class Terminal implements Device {
   }
 
   attach(machine: Machine) {
-    this.machine = machine;
+    this.line = machine.interruptLine();
     machine.mapPort(this.statusPort, {
       in: () => (this.input.length > 0 ? KEY_WAITING : 0) | READY_TO_SEND,
       out: (_port, value) => {
         if ((value & MASTER_RESET) === MASTER_RESET) this.reset();
         else this.interruptOnInput = (value & INTERRUPT_ON_INPUT) !== 0;
+        this.updateLine();
       },
     });
     machine.mapPort(this.dataPort, {
@@ -62,20 +67,22 @@ export class Terminal implements Device {
   }
 
   detach(machine: Machine) {
+    this.line?.lower();
     machine.unmapPort([this.statusPort, this.dataPort]);
-    this.machine = undefined;
+    this.line = undefined;
   }
 
   // Master reset: disable interrupts and drop unread input.
   reset() {
     this.interruptOnInput = false;
     this.input = [];
+    this.updateLine();
   }
 
   // Queue input for the machine (e.g. keystrokes). Strings are sent as bytes.
   send(input: string | number | ArrayLike<number>) {
     for (const byte of toBytes(input)) this.input.push(byte & 0xff);
-    if (this.interruptOnInput) this.machine?.interrupt(this.interruptOpcode);
+    this.updateLine();
   }
 
   get inputPending(): number {
@@ -83,7 +90,15 @@ export class Terminal implements Device {
   }
 
   readByte(): number | undefined {
-    return this.input.shift();
+    const byte = this.input.shift();
+    this.updateLine();
+    return byte;
+  }
+
+  // The interrupt line is up while interrupts are on and a byte is waiting.
+  private updateLine() {
+    if (this.interruptOnInput && this.input.length > 0) this.line?.raise(this.interruptOpcode);
+    else this.line?.lower();
   }
 
   // Output text as if the machine had transmitted it.

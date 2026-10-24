@@ -1,4 +1,4 @@
-import type { Device, Machine } from '../machine';
+import type { Device, InterruptLine, Machine } from '../machine';
 
 export interface TimerOptions {
   // Control port: OUT 0 stops, OUT n starts with a period of n ms. Default 0x30.
@@ -24,6 +24,8 @@ export class Timer implements Device {
   private cancel?: () => void;
   private nextTick = 0; // the cycle the next tick is due at, maybe a fraction
   private machine?: Machine;
+  // Raised on each tick until the CPU accepts the interrupt.
+  private line?: InterruptLine;
 
   constructor(options: TimerOptions = {}) {
     this.port = options.port ?? 0x30;
@@ -33,6 +35,7 @@ export class Timer implements Device {
 
   attach(machine: Machine) {
     this.machine = machine;
+    this.line = machine.interruptLine({ releaseOnAcknowledge: true });
     machine.mapPort(this.port, {
       out: (_port, value) => this.start(value),
       in: () => this.ticks & 0xff,
@@ -41,12 +44,14 @@ export class Timer implements Device {
 
   detach(machine: Machine) {
     this.stop();
+    this.line?.lower();
     machine.unmapPort(this.port);
     this.machine = undefined;
+    this.line = undefined;
   }
 
   reset() {
-    // Machine.reset() already clears scheduled events.
+    // Machine.reset() already clears scheduled events and interrupt lines.
     this.cancel = undefined;
     this.periodMs = 0;
     this.ticks = 0;
@@ -87,7 +92,7 @@ export class Timer implements Device {
     this.nextTick = time;
     this.cancel = machine.scheduleAt(Math.ceil(time), () => {
       this.ticks++;
-      machine.interrupt(this.interruptOpcode);
+      this.line?.raise(this.interruptOpcode);
       this.scheduleTick(time + this.period());
     });
   }

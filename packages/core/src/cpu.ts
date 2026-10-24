@@ -11,6 +11,9 @@ export interface Bus {
   write(addr: number, value: number): void;
   input(port: number): number;
   output(port: number, value: number): void;
+  // Called when the CPU accepts an interrupt (the 8080's INTA cycle), so
+  // whoever requested it can withdraw the request or make the next one.
+  acknowledgeInterrupt?(): void;
 }
 
 // Bit positions of the flags in the PSW byte: S Z 0 AC 0 P 1 CY.
@@ -155,9 +158,14 @@ export class Cpu8080 {
   // Request an interrupt. `opcode` is the instruction the device places on
   // the data bus during acknowledge, normally an RST (`0xC7 | n << 3`).
   // The request is latched until the CPU accepts it (INTE set, at an
-  // instruction boundary).
+  // instruction boundary) or it's withdrawn.
   interrupt(opcode: number): void {
     this.pendingInterrupt = opcode & 0xff;
+  }
+
+  // Withdraw a requested interrupt that hasn't been accepted yet.
+  clearInterrupt(): void {
+    this.pendingInterrupt = -1;
   }
 
   get interruptPending(): boolean {
@@ -173,6 +181,7 @@ export class Cpu8080 {
       this.pendingInterrupt = -1;
       this.inte = false;
       this.halted = false;
+      this.bus.acknowledgeInterrupt?.();
       return this.execute(op);
     }
     this.eiDelay = false;

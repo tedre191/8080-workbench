@@ -44,15 +44,15 @@ goes to its terminal.
 
 ## The machine
 
-| Device   | Where          | Notes                                                        |
-| -------- | -------------- | ------------------------------------------------------------ |
-| Terminal | ports 10h, 11h | Status (bit 0 = key waiting, bit 1 = ready to send) and data |
-| LEDs     | OUT 20h        | One LED per bit                                              |
-| Switches | IN 21h         | One switch per bit                                           |
-| Timer    | OUT 30h, n     | RST 1 every n ms (0 stops)                                   |
-| Display  | F000h–F3FFh    | 32×32 pixels, one byte each, 16 colours                      |
-| Sound    | OUT 40h–4Bh    | 3 voices, 4 ports each: note, waveform, volume, stereo pan   |
-| CP/M     | ports FEh, FFh | Console support for `.COM` programs                          |
+| Device   | Where          | Notes                                                      |
+| -------- | -------------- | ---------------------------------------------------------- |
+| Terminal | ports 10h, 11h | Status and data; OUT 10h, 80h interrupts (RST 7) on keys   |
+| LEDs     | OUT 20h        | One LED per bit                                            |
+| Switches | IN 21h         | One switch per bit                                         |
+| Timer    | OUT 30h, n     | RST 1 every n ms (0 stops)                                 |
+| Display  | F000h–F3FFh    | 32×32 pixels, one byte each, 16 colours                    |
+| Sound    | OUT 40h–4Bh    | 3 voices, 4 ports each: note, waveform, volume, stereo pan |
+| CP/M     | ports FEh, FFh | Console support for `.COM` programs                        |
 
 The Reference tab (F1) has the details, plus every instruction and some
 snippets. The timer and sound keep real time at every speed, so programs that

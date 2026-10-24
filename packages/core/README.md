@@ -56,7 +56,7 @@ in slices without blocking (one per animation frame, say), pass
 
 | Device     | Default               | What it is                                             |
 | ---------- | --------------------- | ------------------------------------------------------ |
-| `Terminal` | ports 10h, 11h        | Serial console in the style of a 6850 ACIA             |
+| `Terminal` | ports 10h, 11h        | Serial console like a 6850 ACIA, with RST 7 interrupts |
 | `CpmBdos`  | ports FEh, FFh        | Enough CP/M to run console `.COM` programs (`loadCom`) |
 | `Leds`     | OUT 20h               | Eight LEDs                                             |
 | `Switches` | IN 21h                | Eight switches                                         |
@@ -78,8 +78,12 @@ A device has a `name` and an `attach(machine)` method. In `attach` it can:
   hardware (later mappings win; everything unmapped is plain RAM),
 - `machine.schedule(cycles, fn)` for timed events, driven by the CPU clock
   rather than wall time, so runs are repeatable,
-- `machine.interrupt(opcode)` to raise an interrupt, usually an RST
-  (`0xCF` is RST 1),
+- `machine.interruptLine()` for an interrupt request line: `raise(opcode)`
+  it, usually with an RST (`0xCF` is RST 1), until the device has been
+  serviced, then `lower()` it. With `{ releaseOnAcknowledge: true }` it lowers
+  itself when the CPU accepts the interrupt, for one interrupt per event.
+  When several lines are raised, the highest RST goes first, as with Intel's
+  8214 priority chip. `machine.interrupt(opcode)` asks for a single one,
 - `machine.stop(message)` to pause execution.
 
 ```ts

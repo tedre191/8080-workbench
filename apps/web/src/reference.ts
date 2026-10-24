@@ -262,4 +262,48 @@ main:   LXI SP, 0E000h
 wait:   HLT                 ; sleep until an interrupt
         JMP wait`,
   },
+  {
+    title: 'Read keys with an interrupt',
+    note: 'A whole program: each key interrupts with RST 7 (address 0038h) and lands in a buffer; the main loop echoes them and sleeps in between.',
+    program: true,
+    code: `        ORG 0
+        JMP main
+
+        ORG 38h             ; RST 7: a key arrived
+        PUSH PSW            ; save what the handler changes
+        PUSH H
+        IN 11h              ; read the key; this lowers the interrupt
+        LHLD tail           ; and add it to the buffer
+        MOV M, A
+        INR L               ; the buffer is one page, so L wraps around
+        SHLD tail
+        POP H
+        POP PSW
+        EI                  ; interrupts are off on entry
+        RET
+
+main:   LXI SP, 0E000h
+        LXI H, 8000h        ; the buffer: 8000h-80FFh
+        SHLD head
+        SHLD tail
+        MVI A, 80h          ; interrupt while a key is waiting
+        OUT 10h
+loop:   DI                  ; check the buffer with interrupts off...
+        LHLD head
+        LDA tail
+        CMP L
+        JNZ echo
+        EI                  ; ...EI only takes effect after HLT starts,
+        HLT                 ; so a key can't slip in between and be missed
+        JMP loop
+echo:   EI
+        MOV A, M            ; echo the oldest key
+        OUT 11h
+        INR L
+        SHLD head
+        JMP loop
+
+head:   DW 0                ; the next key to echo
+tail:   DW 0                ; where the next key goes`,
+  },
 ];
