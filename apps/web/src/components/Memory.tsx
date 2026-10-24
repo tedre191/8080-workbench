@@ -7,7 +7,7 @@ import type { Session } from '../session';
 import { AddressInput, resolveAddress } from './AddressInput';
 import { HexField } from './HexField';
 
-const ROW_HEIGHT = 20;
+const ROW_HEIGHT = 24; // also the size of each byte, so they're big enough to tap
 const BYTES_PER_ROW = 16;
 const ROW_COUNT = 0x10000 / BYTES_PER_ROW;
 

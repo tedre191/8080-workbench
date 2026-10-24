@@ -748,6 +748,12 @@ code {
   font-size: 11px;
 }
 
+/* The gold highlight darkens the background, so faint text needs a step up. */
+.disasm-row.is-pc .bytes,
+.disasm-row.is-pc .cycles {
+  color: var(--silk-dim);
+}
+
 .disasm-row.undoc .mnemonic {
   color: var(--silk-dim);
   font-style: italic;
@@ -963,19 +969,19 @@ input.hexfield {
 
 .mem-spacer {
   position: relative;
-  min-width: 540px;
+  min-width: 558px; /* the width of a full row; narrower panes scroll sideways */
 }
 
 .mem-row {
   position: absolute;
   left: 0;
   right: 0;
-  height: 20px;
+  height: 24px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 0 10px;
-  font: 12px / 20px var(--font-mono);
+  font: 12px / 24px var(--font-mono);
 }
 
 .mem-bytes {
@@ -983,17 +989,17 @@ input.hexfield {
 }
 
 .mem-bytes .hexfield:nth-child(8) {
-  margin-right: 8px;
+  margin-right: 4px;
 }
 
 .byte.hexfield {
   border: 0;
   background: none;
-  padding: 0 3px;
+  padding: 0;
   border-radius: 2px;
-  line-height: 18px;
-  width: 2ch;
-  box-sizing: content-box;
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
 }
 
 input.byte.hexfield {
