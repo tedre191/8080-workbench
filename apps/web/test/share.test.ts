@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EXAMPLES } from '../src/examples';
-import { readShareLink, shareLink } from '../src/share';
+import { MAX_SHARED_BYTES, readShareLink, shareLink } from '../src/share';
 
 describe('share links', () => {
   it('round-trip a program through the URL', async () => {
@@ -14,5 +14,12 @@ describe('share links', () => {
     expect(await readShareLink('')).toBeNull();
     expect(await readShareLink('#name=x')).toBeNull();
     expect(await readShareLink('#code=not-really-deflate')).toBeNull();
+  });
+
+  it('refuse a link that expands to more than a program could be', async () => {
+    const huge = { name: 'bomb', source: 'A'.repeat(MAX_SHARED_BYTES + 1) };
+    const link = await shareLink(huge, 'https://example.com/');
+    expect(link.length).toBeLessThan(10_000); // it compresses to almost nothing
+    expect(await readShareLink(new URL(link).hash)).toBeNull();
   });
 });

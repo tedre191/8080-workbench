@@ -166,6 +166,15 @@ export class Session {
   }
 
   openBinary(image: BinaryImage) {
+    const limit = image.format === 'com' ? this.cpm.maxComSize : 0x10000;
+    if (image.bytes.length > limit) {
+      const where = image.format === 'com' ? 'a CP/M program' : 'memory';
+      this.setStatus({
+        tone: 'error',
+        text: `Can't open ${image.name}: ${image.bytes.length} bytes is more than fits in ${where} (${limit})`,
+      });
+      return;
+    }
     this.binary = image;
     this.program = null;
     this.programSource = '';

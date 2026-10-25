@@ -85,7 +85,13 @@ export class InterruptLine {
     readonly releaseOnAcknowledge: boolean,
   ) {}
 
+  // `opcode` must be a one-byte instruction: the CPU takes only that byte
+  // from the device, so an instruction with operands would read them from
+  // memory instead.
   raise(opcode = this.opcode) {
+    if (OPCODES[opcode & 0xff].length !== 1) {
+      throw new RangeError('an interrupt must supply a one-byte instruction, such as RST');
+    }
     if (this.active && opcode === this.opcode) return;
     this.opcode = opcode & 0xff;
     this.active = true;
@@ -172,7 +178,12 @@ export class Machine implements Bus {
   private regionAt(address: number) {
     const regions = this.pages[address >> 8];
     if (!regions) return undefined;
-    return regions.find((region) => address >= region.start && address <= region.end);
+    // A plain loop: this runs on every access to mapped memory.
+    for (let i = 0; i < regions.length; i++) {
+      const region = regions[i];
+      if (address >= region.start && address <= region.end) return region;
+    }
+    return undefined;
   }
 
   // Memory access for debuggers and loaders: no watchpoints, no side effects
@@ -238,17 +249,28 @@ export class Machine implements Bus {
 
   // Claim one or more ports. A handler with only `in` or only `out` claims
   // just that direction, so an input and an output device can share a port.
+  // Claiming a direction another handler already has is an error.
   mapPort(ports: number | number[], handler: PortHandler) {
-    for (const port of [ports].flat()) {
-      if (handler.in) this.inputs[port & 0xff] = handler;
-      if (handler.out) this.outputs[port & 0xff] = handler;
+    const list = [ports].flat().map((port) => port & 0xff);
+    for (const port of list) {
+      const taken =
+        (handler.in && this.inputs[port] && this.inputs[port] !== handler) ||
+        (handler.out && this.outputs[port] && this.outputs[port] !== handler);
+      if (taken) throw new Error(`port ${port.toString(16).toUpperCase()}h is already in use`);
+    }
+    for (const port of list) {
+      if (handler.in) this.inputs[port] = handler;
+      if (handler.out) this.outputs[port] = handler;
     }
   }
 
-  unmapPort(ports: number | number[]) {
+  // Release ports. With a handler, only what that handler claimed is
+  // released, so a device sharing a port with another leaves it connected.
+  unmapPort(ports: number | number[], handler?: PortHandler) {
     for (const port of [ports].flat()) {
-      this.inputs[port & 0xff] = null;
-      this.outputs[port & 0xff] = null;
+      const p = port & 0xff;
+      if (!handler || this.inputs[p] === handler) this.inputs[p] = null;
+      if (!handler || this.outputs[p] === handler) this.outputs[p] = null;
     }
   }
 
@@ -293,6 +315,13 @@ export class Machine implements Bus {
     const line = new InterruptLine(() => this.updateInterrupts(), releaseOnAcknowledge);
     this.interruptLines.push(line);
     return line;
+  }
+
+  // Remove a line made by `interruptLine`, as when its device is detached.
+  releaseInterruptLine(line: InterruptLine) {
+    this.interruptLines = this.interruptLines.filter((l) => l !== line);
+    if (this.offeredLine === line) this.offeredLine = null;
+    this.updateInterrupts();
   }
 
   // Request one interrupt. `opcode` is the instruction the device supplies,
@@ -481,7 +510,8 @@ export class Machine implements Bus {
   }
 
   // Run until the current subroutine returns: a return instruction that
-  // leaves the stack higher than where we started.
+  // leaves the stack higher than where we started (allowing for it wrapping
+  // past FFFFh, as with a stack set up by LXI SP,0).
   stepOut(budget = 50_000_000) {
     const until = this.stepOutCondition();
     return orNull(this.run({ cycles: budget, skipBreakpointAtStart: true, until }), 'condition');
@@ -507,7 +537,8 @@ export class Machine implements Bus {
     let atReturn = isReturn(this);
 
     return (machine) => {
-      const justReturned = atReturn && machine.cpu.sp > stack;
+      const rise = (machine.cpu.sp - stack) & 0xffff;
+      const justReturned = atReturn && rise > 0 && rise < 0x8000;
       atReturn = isReturn(machine);
       return justReturned;
     };

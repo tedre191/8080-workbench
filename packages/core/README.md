@@ -73,14 +73,17 @@ the CPU at another rate can call `setClockHz` to keep the timer in real time.
 
 A device has a `name` and an `attach(machine)` method. In `attach` it can:
 
-- `machine.mapPort(port, { in, out })` to claim I/O ports,
+- `machine.mapPort(port, { in, out })` to claim I/O ports (claiming a port
+  another device already has throws; `unmapPort(port, handler)` releases
+  only what that handler claimed),
 - `machine.mapMemory(start, length, { read, write })` for memory-mapped
   hardware (later mappings win; everything unmapped is plain RAM),
 - `machine.schedule(cycles, fn)` for timed events, driven by the CPU clock
   rather than wall time, so runs are repeatable,
 - `machine.interruptLine()` for an interrupt request line: `raise(opcode)`
-  it, usually with an RST (`0xCF` is RST 1), until the device has been
-  serviced, then `lower()` it. With `{ releaseOnAcknowledge: true }` it lowers
+  it with a one-byte instruction, usually an RST (`0xCF` is RST 1), until
+  the device has been serviced, then `lower()` it. Release it with
+  `machine.releaseInterruptLine(line)` when the device is detached. With `{ releaseOnAcknowledge: true }` it lowers
   itself when the CPU accepts the interrupt, for one interrupt per event.
   When several lines are raised, the highest RST goes first, as with Intel's
   8214 priority chip. `machine.interrupt(opcode)` asks for a single one,

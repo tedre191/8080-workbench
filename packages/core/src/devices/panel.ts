@@ -1,26 +1,27 @@
 import { Emitter } from '../emitter';
-import type { Device, Machine } from '../machine';
+import type { Device, Machine, PortHandler } from '../machine';
 
 // Eight LEDs latched from an output port.
 export class Leds implements Device {
   readonly name = 'LEDs';
   value = 0;
   readonly onChange = new Emitter<number>();
+  private readonly handler: PortHandler = {
+    out: (_port, value) => {
+      this.value = value;
+      this.onChange.emit(value);
+    },
+    in: () => this.value,
+  };
 
   constructor(readonly port = 0x20) {}
 
   attach(machine: Machine) {
-    machine.mapPort(this.port, {
-      out: (_port, value) => {
-        this.value = value;
-        this.onChange.emit(value);
-      },
-      in: () => this.value,
-    });
+    machine.mapPort(this.port, this.handler);
   }
 
   detach(machine: Machine) {
-    machine.unmapPort(this.port);
+    machine.unmapPort(this.port, this.handler);
   }
 
   reset() {
@@ -35,14 +36,16 @@ export class Switches implements Device {
   value = 0;
   readonly onChange = new Emitter<number>();
 
+  private readonly handler: PortHandler = { in: () => this.value };
+
   constructor(readonly port = 0x21) {}
 
   attach(machine: Machine) {
-    machine.mapPort(this.port, { in: () => this.value });
+    machine.mapPort(this.port, this.handler);
   }
 
   detach(machine: Machine) {
-    machine.unmapPort(this.port);
+    machine.unmapPort(this.port, this.handler);
   }
 
   set(value: number) {

@@ -22,6 +22,10 @@ export function Memory({ session }: { session: Session }) {
   const [scrollTop, setScrollTop] = useState(0);
   const [view, setView] = useState({ width: 600, height: 300 });
   const [follow, setFollow] = useState<Follow>('none');
+  // The bytes are one tab stop, moved between with the arrow keys: this byte
+  // takes focus, or the first one on screen if it's scrolled away.
+  const [focusAddress, setFocusAddress] = useState(0);
+  const moveFocus = useRef(false);
   const rowBytes = view.width >= WIDE_ROW_WIDTH ? WIDE_ROW_BYTES : NARROW_ROW_BYTES;
   const rowCount = 0x10000 / rowBytes;
 
@@ -56,12 +60,62 @@ export function Memory({ session }: { session: Session }) {
 
   const firstRow = Math.floor(scrollTop / ROW_HEIGHT);
   const lastRow = Math.min(firstRow + Math.ceil(view.height / ROW_HEIGHT) + 1, rowCount);
+  const onScreen = focusAddress >= firstRow * rowBytes && focusAddress < lastRow * rowBytes;
+  const tabStop = onScreen ? focusAddress : firstRow * rowBytes;
   const rows = [];
   for (let row = firstRow; row < lastRow; row++) {
     rows.push(
-      <MemoryRow key={row} session={session} address={row * rowBytes} rowBytes={rowBytes} />,
+      <MemoryRow
+        key={row}
+        session={session}
+        address={row * rowBytes}
+        rowBytes={rowBytes}
+        tabStop={tabStop}
+        onFocusByte={setFocusAddress}
+      />,
     );
   }
+
+  // After an arrow key, focus the byte it moved to once its row is drawn.
+  useLayoutEffect(() => {
+    if (!moveFocus.current) return;
+    const byte = scroller.current!.querySelector<HTMLElement>(`[data-address="${focusAddress}"]`);
+    if (!byte) return; // not drawn yet: the scroll to it is still coming
+    moveFocus.current = false;
+    byte.focus({ preventScroll: true });
+    // `scrollTop` isn't read, but the byte may only be drawn after a scroll.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
+  }, [focusAddress, scrollTop]);
+
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (!(event.target instanceof HTMLButtonElement)) return; // not while editing a byte
+    const pageRows = Math.max(1, Math.floor(view.height / ROW_HEIGHT) - 1);
+    const rowStart = focusAddress - (focusAddress % rowBytes);
+    const ctrl = event.ctrlKey || event.metaKey;
+    const moves: Record<string, number> = {
+      ArrowLeft: focusAddress - 1,
+      ArrowRight: focusAddress + 1,
+      ArrowUp: focusAddress - rowBytes,
+      ArrowDown: focusAddress + rowBytes,
+      PageUp: focusAddress - pageRows * rowBytes,
+      PageDown: focusAddress + pageRows * rowBytes,
+      Home: ctrl ? 0 : rowStart,
+      End: ctrl ? 0xffff : rowStart + rowBytes - 1,
+    };
+    if (!(event.key in moves)) return;
+    event.preventDefault();
+    const address = Math.max(0, Math.min(0xffff, moves[event.key]));
+    moveFocus.current = true;
+    setFocusAddress(address);
+
+    // Scroll just enough to show its row.
+    const element = scroller.current!;
+    const y = Math.floor(address / rowBytes) * ROW_HEIGHT;
+    if (y < element.scrollTop) element.scrollTop = y;
+    else if (y + ROW_HEIGHT > element.scrollTop + element.clientHeight) {
+      element.scrollTop = y + ROW_HEIGHT - element.clientHeight;
+    }
+  };
 
   return (
     <div className="memory">
@@ -95,6 +149,7 @@ export function Memory({ session }: { session: Session }) {
         className="mem-scroll"
         ref={scroller}
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+        onKeyDown={onKeyDown}
       >
         <div
           className="mem-spacer"
@@ -120,10 +175,14 @@ function MemoryRow({
   session,
   address,
   rowBytes,
+  tabStop,
+  onFocusByte,
 }: {
   session: Session;
   address: number;
   rowBytes: number;
+  tabStop: number;
+  onFocusByte(address: number): void;
 }) {
   const machine = session.machine;
   const bytes = [];
@@ -139,6 +198,9 @@ function MemoryRow({
         value={value}
         digits={2}
         className={byteClass(session, machine, byteAddress, value)}
+        address={byteAddress}
+        tabIndex={byteAddress === tabStop ? 0 : -1}
+        onFocus={() => onFocusByte(byteAddress)}
         onCommit={(newValue) => session.poke(byteAddress, newValue)}
       />,
     );

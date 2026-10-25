@@ -77,4 +77,15 @@ done:   HLT
   it('rejects register names as labels', () => {
     expect(assemble('B: NOP').ok).toBe(false);
   });
+
+  it('gives a SET symbol its value at each line', () => {
+    expect(bytesOf('X SET 1\n DB X\nX SET X + 1\n DB X\nX SET 7\n DB X')).toEqual([1, 2, 7]);
+  });
+
+  it("rejects characters that don't fit in a byte", () => {
+    expect(bytesOf(' DB "é"')).toEqual([0xe9]);
+    const r = assemble(' DB "a😀"\nafter: NOP');
+    expect(r.errors[0]).toMatchObject({ line: 1, message: "character '😀' doesn't fit in a byte" });
+    expect(assemble(" MVI A, '€'").ok).toBe(false);
+  });
 });

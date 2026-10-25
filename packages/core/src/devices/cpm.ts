@@ -1,4 +1,4 @@
-import type { Device, Machine } from '../machine';
+import type { Device, Machine, PortHandler } from '../machine';
 import type { Terminal } from './terminal';
 
 export interface CpmOptions {
@@ -25,6 +25,10 @@ export class CpmBdos implements Device {
   readonly bdosAddress: number;
   calls = 0; // BDOS calls since the last loadCom
   private machine?: Machine;
+  private readonly bdosHandler: PortHandler = { out: () => this.handleCall() };
+  private readonly exitHandler: PortHandler = {
+    out: () => this.machine?.stop('Program exited (CP/M warm boot)'),
+  };
 
   constructor(
     readonly terminal: Terminal,
@@ -37,19 +41,30 @@ export class CpmBdos implements Device {
 
   attach(machine: Machine) {
     this.machine = machine;
-    machine.mapPort(this.bdosPort, { out: () => this.handleCall() });
-    machine.mapPort(this.exitPort, { out: () => machine.stop('Program exited (CP/M warm boot)') });
+    machine.mapPort(this.bdosPort, this.bdosHandler);
+    machine.mapPort(this.exitPort, this.exitHandler);
   }
 
   detach(machine: Machine) {
-    machine.unmapPort([this.bdosPort, this.exitPort]);
+    machine.unmapPort(this.bdosPort, this.bdosHandler);
+    machine.unmapPort(this.exitPort, this.exitHandler);
     this.machine = undefined;
+  }
+
+  // The largest .COM program that fits between 0100h and the stack.
+  get maxComSize() {
+    return this.bdosAddress - 2 - 0x100;
   }
 
   // Load a .COM program at 0100h, where CP/M programs start.
   loadCom(program: ArrayLike<number>) {
     const machine = this.machine;
     if (!machine) throw new Error('CpmBdos is not attached to a machine');
+    if (program.length > this.maxComSize) {
+      throw new RangeError(
+        `a .COM program can be at most ${this.maxComSize} bytes, not ${program.length}`,
+      );
+    }
     machine.reset();
     this.calls = 0;
 

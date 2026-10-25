@@ -35,6 +35,15 @@ function isTextField(target: EventTarget | null) {
   return target instanceof HTMLElement && target.closest('input, textarea, select') !== null;
 }
 
+// Keys that move between controls or press them, which stay with the page
+// while a program runs. Tab always moves focus (the terminal sends it when
+// it has focus itself). Enter and Space press a control only if it was
+// reached with Tab: after clicking Run, they still go to the program.
+function isNavigationKey(event: KeyboardEvent, focusedByTab: boolean) {
+  if (event.key === 'Tab') return true;
+  return (event.key === 'Enter' || event.key === ' ') && focusedByTab;
+}
+
 export function App() {
   const library = usePrograms();
   const { current } = library;
@@ -189,7 +198,14 @@ export function App() {
   };
 
   useEffect(() => {
+    // Whether the focused element was reached with Tab rather than a click.
+    let lastMove: 'tab' | 'pointer' = 'pointer';
+    let focusedByTab = false;
+    const onPointer = () => (lastMove = 'pointer');
+    const onFocus = () => (focusedByTab = lastMove === 'tab');
+
     const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Tab') lastMove = 'tab';
       if (event.key === 'Escape' && session.stepping) {
         session.pause();
         event.preventDefault();
@@ -220,7 +236,9 @@ export function App() {
         default: {
           // While a program runs, typing anywhere outside the editor goes to it.
           const byte =
-            session.running && !isTextField(event.target) ? terminalKey(event) : undefined;
+            session.running && !isTextField(event.target) && !isNavigationKey(event, focusedByTab)
+              ? terminalKey(event)
+              : undefined;
           if (byte === undefined) return;
           session.terminal.send(byte);
         }
@@ -228,7 +246,13 @@ export function App() {
       event.preventDefault();
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('pointerdown', onPointer, true);
+    window.addEventListener('focusin', onFocus);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pointerdown', onPointer, true);
+      window.removeEventListener('focusin', onFocus);
+    };
   }, [session]);
 
   const { status, binary } = session;

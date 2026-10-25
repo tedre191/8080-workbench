@@ -241,6 +241,9 @@ class Assembly {
 
       let bytes: number[] = [];
       try {
+        // A SET symbol can change value further down, so give it each new
+        // value again in order: lines after it see that one, not the last.
+        if (statement.operation === 'SET') this.defineConstant(statement, statement.address);
         bytes = this.encode(statement);
         if (bytes.length > 0) this.emit(statement, bytes);
       } catch (error) {

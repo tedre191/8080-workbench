@@ -1,5 +1,5 @@
 import { Emitter } from '../emitter';
-import type { Device, InterruptLine, Machine } from '../machine';
+import type { Device, InterruptLine, Machine, PortHandler } from '../machine';
 
 export interface TerminalOptions {
   // Status/control port (6850 ACIA style). Default 0x10.
@@ -9,6 +9,13 @@ export interface TerminalOptions {
   // Opcode raised when a byte arrives and RX interrupts are enabled. Default RST 7.
   interruptOpcode?: number;
 }
+
+// Status register bits.
+const KEY_WAITING = 0x01;
+const READY_TO_SEND = 0x02;
+// Control register bits.
+const MASTER_RESET = 0x03;
+const INTERRUPT_ON_INPUT = 0x80;
 
 // A serial terminal, modelled loosely on the Motorola 6850 ACIA used by the
 // Altair 88-2SIO board.
@@ -24,13 +31,6 @@ export interface TerminalOptions {
 //
 // Other devices (e.g. the CP/M BDOS shim) can also use it directly through
 // `print` and `readByte`.
-// Status register bits.
-const KEY_WAITING = 0x01;
-const READY_TO_SEND = 0x02;
-// Control register bits.
-const MASTER_RESET = 0x03;
-const INTERRUPT_ON_INPUT = 0x80;
-
 export class Terminal implements Device {
   readonly name = 'Terminal';
   readonly statusPort: number;
@@ -43,6 +43,18 @@ export class Terminal implements Device {
   private input: number[] = []; // keys waiting to be read
   private interruptOnInput = false;
   private line?: InterruptLine;
+  private readonly statusHandler: PortHandler = {
+    in: () => (this.input.length > 0 ? KEY_WAITING : 0) | READY_TO_SEND,
+    out: (_port, value) => {
+      if ((value & MASTER_RESET) === MASTER_RESET) this.reset();
+      else this.interruptOnInput = (value & INTERRUPT_ON_INPUT) !== 0;
+      this.updateLine();
+    },
+  };
+  private readonly dataHandler: PortHandler = {
+    in: () => this.readByte() ?? 0,
+    out: (_port, value) => this.onOutput.emit(value),
+  };
 
   constructor(options: TerminalOptions = {}) {
     this.statusPort = options.statusPort ?? 0x10;
@@ -52,23 +64,14 @@ export class Terminal implements Device {
 
   attach(machine: Machine) {
     this.line = machine.interruptLine();
-    machine.mapPort(this.statusPort, {
-      in: () => (this.input.length > 0 ? KEY_WAITING : 0) | READY_TO_SEND,
-      out: (_port, value) => {
-        if ((value & MASTER_RESET) === MASTER_RESET) this.reset();
-        else this.interruptOnInput = (value & INTERRUPT_ON_INPUT) !== 0;
-        this.updateLine();
-      },
-    });
-    machine.mapPort(this.dataPort, {
-      in: () => this.readByte() ?? 0,
-      out: (_port, value) => this.onOutput.emit(value),
-    });
+    machine.mapPort(this.statusPort, this.statusHandler);
+    machine.mapPort(this.dataPort, this.dataHandler);
   }
 
   detach(machine: Machine) {
-    this.line?.lower();
-    machine.unmapPort([this.statusPort, this.dataPort]);
+    if (this.line) machine.releaseInterruptLine(this.line);
+    machine.unmapPort(this.statusPort, this.statusHandler);
+    machine.unmapPort(this.dataPort, this.dataHandler);
     this.line = undefined;
   }
 

@@ -1,4 +1,4 @@
-import type { Device, InterruptLine, Machine } from '../machine';
+import type { Device, InterruptLine, Machine, PortHandler } from '../machine';
 
 export interface TimerOptions {
   // Control port: OUT 0 stops, OUT n starts with a period of n ms. Default 0x30.
@@ -26,26 +26,27 @@ export class Timer implements Device {
   private machine?: Machine;
   // Raised on each tick until the CPU accepts the interrupt.
   private line?: InterruptLine;
+  private readonly handler: PortHandler = {
+    out: (_port, value) => this.start(value),
+    in: () => this.ticks & 0xff,
+  };
 
   constructor(options: TimerOptions = {}) {
     this.port = options.port ?? 0x30;
-    this.clockHz = options.clockHz ?? 2_000_000;
+    this.clockHz = checkClockHz(options.clockHz ?? 2_000_000);
     this.interruptOpcode = options.interruptOpcode ?? 0xcf;
   }
 
   attach(machine: Machine) {
     this.machine = machine;
     this.line = machine.interruptLine({ releaseOnAcknowledge: true });
-    machine.mapPort(this.port, {
-      out: (_port, value) => this.start(value),
-      in: () => this.ticks & 0xff,
-    });
+    machine.mapPort(this.port, this.handler);
   }
 
   detach(machine: Machine) {
     this.stop();
-    this.line?.lower();
-    machine.unmapPort(this.port);
+    if (this.line) machine.releaseInterruptLine(this.line);
+    machine.unmapPort(this.port, this.handler);
     this.machine = undefined;
     this.line = undefined;
   }
@@ -67,6 +68,7 @@ export class Timer implements Device {
   // faster or slower than its nominal clock. A tick already on its way
   // arrives after the same share of its period.
   setClockHz(clockHz: number) {
+    checkClockHz(clockHz);
     if (clockHz === this.clockHz) return;
     const old = this.clockHz;
     this.clockHz = clockHz;
@@ -102,4 +104,12 @@ export class Timer implements Device {
     this.cancel = undefined;
     this.periodMs = 0;
   }
+}
+
+// A clock rate of 0 (or less) would make every tick due at once, forever.
+function checkClockHz(clockHz: number) {
+  if (!(clockHz > 0) || !Number.isFinite(clockHz)) {
+    throw new RangeError(`the timer's clock rate must be above 0 Hz, not ${clockHz}`);
+  }
+  return clockHz;
 }

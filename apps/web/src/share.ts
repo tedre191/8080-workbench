@@ -27,13 +27,35 @@ export async function readShareLink(hash: string): Promise<SharedProgram | null>
   }
 }
 
+// The most a link may decompress to. Real programs are a few kilobytes; a
+// crafted link could otherwise expand to gigabytes and take the tab down.
+export const MAX_SHARED_BYTES = 1 << 20;
+
 async function transform(bytes: Uint8Array<ArrayBuffer>, direction: 'compress' | 'decompress') {
   const stream =
     direction === 'compress'
       ? new CompressionStream('deflate-raw')
       : new DecompressionStream('deflate-raw');
-  const output = new Blob([bytes]).stream().pipeThrough(stream);
-  return new Uint8Array(await new Response(output).arrayBuffer());
+  const reader = new Blob([bytes]).stream().pipeThrough(stream).getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > MAX_SHARED_BYTES) {
+      await reader.cancel();
+      throw new RangeError('shared program is too big');
+    }
+    chunks.push(value);
+  }
+  const output = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return output;
 }
 
 function toBase64Url(bytes: Uint8Array) {

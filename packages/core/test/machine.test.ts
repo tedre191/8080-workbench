@@ -95,6 +95,17 @@ describe('Machine', () => {
     expect(m.cpu.pc).toBe(6);
   });
 
+  it('steps out when the stack wraps past FFFFh', () => {
+    // LXI SP,0 puts the stack at the top of memory: SP is FFFEh in the call.
+    const { m } = machineWith(' LXI SP, 0\n CALL subr\n HLT\nsubr: NOP\n RET');
+    m.step();
+    m.step();
+    expect(m.cpu.sp).toBe(0xfffe);
+    expect(m.stepOut()).toBeNull();
+    expect(m.cpu.pc).toBe(6);
+    expect(m.cpu.sp).toBe(0);
+  });
+
   it('steps over and out in slices', () => {
     const source = ' LXI SP, 100h\n CALL subr\n HLT\nsubr: MVI B, 50\nloop: DCR B\n JNZ loop\n RET';
     const { m } = machineWith(source);
@@ -168,6 +179,25 @@ wait:   HLT
     expect(seen.length).toBe(1);
     expect(seen[0]).toBeGreaterThanOrEqual(100);
     expect(seen[0]).toBeLessThan(110);
+  });
+
+  it('refuses a port already in use, and unmaps only what a handler claimed', () => {
+    const m = new Machine();
+    const input = { in: () => 1 };
+    const output = { out: () => {} };
+    m.mapPort(0x50, input);
+    m.mapPort(0x50, output); // the other direction is free
+    expect(() => m.mapPort(0x50, { in: () => 2 })).toThrow(/port 50h is already in use/);
+    m.unmapPort(0x50, output);
+    expect(m.input(0x50)).toBe(1);
+    m.unmapPort(0x50);
+    expect(m.input(0x50)).toBe(0xff);
+  });
+
+  it('only accepts one-byte interrupt instructions', () => {
+    const m = new Machine();
+    expect(() => m.interrupt(0xcd)).toThrow(RangeError); // CALL needs an address
+    expect(() => m.interrupt(0xcf)).not.toThrow();
   });
 
   it('accepts custom devices', () => {
@@ -275,6 +305,25 @@ idle:   HLT
     m.poke(0x3000, 1);
     m.run({ cycles: 300 });
     expect([m.peek(0x2000), m.peek(0x2001)]).toEqual([7, 1]);
+  });
+
+  it('removing a device releases its interrupt line', () => {
+    const { m } = machineWith(' EI\nloop: JMP loop');
+    const tty = m.add(new Terminal());
+    m.output(0x10, 0x80); // receive interrupts on
+    tty.send('x');
+    expect(m.cpu.interruptPending).toBe(true);
+    m.remove(tty);
+    expect(m.cpu.interruptPending).toBe(false);
+    m.add(tty); // and it can be plugged in again
+    m.output(0x10, 0x80);
+    tty.send('y');
+    expect(m.cpu.interruptPending).toBe(true);
+  });
+
+  it('timer refuses a clock rate of 0', () => {
+    expect(() => new Timer({ clockHz: 0 })).toThrow(RangeError);
+    expect(() => new Timer().setClockHz(0)).toThrow(RangeError);
   });
 
   it('timer raises periodic interrupts', () => {

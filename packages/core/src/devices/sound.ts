@@ -1,5 +1,5 @@
 import { Emitter } from '../emitter';
-import type { Device, Machine } from '../machine';
+import type { Device, Machine, PortHandler } from '../machine';
 
 export interface SoundOptions {
   // The first voice's first port; each voice takes four. Default 0x40.
@@ -48,6 +48,7 @@ export class Sound implements Device {
   // a UI can tell a new state from an old one by identity.
   voices: readonly SoundState[];
   private machine?: Machine;
+  private ports: [number, PortHandler][] = [];
 
   constructor(options: SoundOptions = {}) {
     this.port = options.port ?? 0x40;
@@ -61,29 +62,30 @@ export class Sound implements Device {
 
   attach(machine: Machine) {
     this.machine = machine;
-    this.voices.forEach((_, voice) => {
+    this.ports = this.voices.flatMap((_, voice): [number, PortHandler][] => {
       const port = this.port + 4 * voice;
-      machine.mapPort(port, {
-        out: (_port, value) => this.set(voice, { note: value & 0x7f }),
-        in: () => this.voices[voice].note,
-      });
-      machine.mapPort(port + 1, {
-        out: (_port, value) => this.set(voice, { waveform: WAVEFORMS[value & 3] }),
-      });
-      machine.mapPort(port + 2, {
-        out: (_port, value) => this.set(voice, { volume: Math.min(value, 15) }),
-      });
-      machine.mapPort(port + 3, {
-        out: (_port, value) => this.set(voice, { pan: value < 0x80 ? value : value - 0x100 }),
-      });
+      return [
+        [
+          port,
+          {
+            out: (_port, value) => this.set(voice, { note: value & 0x7f }),
+            in: () => this.voices[voice].note,
+          },
+        ],
+        [port + 1, { out: (_port, value) => this.set(voice, { waveform: WAVEFORMS[value & 3] }) }],
+        [port + 2, { out: (_port, value) => this.set(voice, { volume: Math.min(value, 15) }) }],
+        [
+          port + 3,
+          { out: (_port, value) => this.set(voice, { pan: value < 0x80 ? value : value - 0x100 }) },
+        ],
+      ];
     });
+    for (const [port, handler] of this.ports) machine.mapPort(port, handler);
   }
 
   detach(machine: Machine) {
-    const ports = this.voices.flatMap((_, voice) =>
-      [0, 1, 2, 3].map((i) => this.port + 4 * voice + i),
-    );
-    machine.unmapPort(ports);
+    for (const [port, handler] of this.ports) machine.unmapPort(port, handler);
+    this.ports = [];
     this.machine = undefined;
   }
 

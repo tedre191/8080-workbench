@@ -33,6 +33,13 @@ function runCom(file: string, maxCycles = 50_000_000_000) {
 
 const has = (f: string) => existsSync(join(ROMS, f));
 
+it('refuses a .COM program that would run into the stack', () => {
+  const m = new Machine();
+  const cpm = m.add(new CpmBdos(m.add(new Terminal())));
+  expect(() => cpm.loadCom(new Uint8Array(cpm.maxComSize + 1))).toThrow(RangeError);
+  expect(() => cpm.loadCom(new Uint8Array(cpm.maxComSize))).not.toThrow();
+});
+
 describe('CP/M CPU exercisers', () => {
   it.skipIf(!has('TST8080.COM'))('TST8080 (Microcosm diagnostic)', () => {
     const { out, stop } = runCom('TST8080.COM');

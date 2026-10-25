@@ -124,6 +124,11 @@ function readString(line: string, start: number): [string, number] {
       text += ESCAPES[line[i + 1]];
       i += 2;
     } else {
+      // Each character becomes one byte, so it has to fit in one.
+      const code = line.codePointAt(i)!;
+      if (code > 0xff) {
+        throw new AsmError(`character '${String.fromCodePoint(code)}' doesn't fit in a byte`, i);
+      }
       text += ch;
       i++;
     }

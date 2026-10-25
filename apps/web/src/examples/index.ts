@@ -12,20 +12,18 @@ export interface Example {
   id: string;
   name: string;
   source: string;
-  // Open the Devices tab when this example is loaded.
-  usesDevices?: boolean;
 }
 
 export const EXAMPLES: Example[] = [
   { id: 'hello', name: 'Hello & echo', source: hello },
   { id: 'primes', name: 'Primes', source: primes },
-  { id: 'leds', name: 'LED counter', source: leds, usesDevices: true },
-  { id: 'display', name: 'Display pattern', source: display, usesDevices: true },
-  { id: 'interrupts', name: 'Timer interrupts', source: interrupts, usesDevices: true },
-  { id: 'snake', name: 'Snake', source: snake, usesDevices: true },
-  { id: 'simon', name: 'Simon', source: simon, usesDevices: true },
-  { id: 'cracktro', name: 'Cracktro', source: cracktro, usesDevices: true },
-  { id: 'piano', name: 'Keyboard piano', source: piano, usesDevices: true },
+  { id: 'leds', name: 'LED counter', source: leds },
+  { id: 'display', name: 'Display pattern', source: display },
+  { id: 'interrupts', name: 'Timer interrupts', source: interrupts },
+  { id: 'snake', name: 'Snake', source: snake },
+  { id: 'simon', name: 'Simon', source: simon },
+  { id: 'cracktro', name: 'Cracktro', source: cracktro },
+  { id: 'piano', name: 'Keyboard piano', source: piano },
 ];
 
 // Where the classic CPU test programs are downloaded from when opened.

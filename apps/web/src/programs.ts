@@ -17,7 +17,6 @@ export interface OpenProgram {
   name: string;
   source: string;
   isExample: boolean;
-  usesDevices: boolean;
 }
 
 interface Library {
@@ -35,7 +34,6 @@ const fromExample = (ex: Example): OpenProgram => ({
   name: ex.name,
   source: ex.source,
   isExample: true,
-  usesDevices: ex.usesDevices ?? false,
 });
 
 const fromUser = (p: UserProgram): OpenProgram => ({
@@ -43,7 +41,6 @@ const fromUser = (p: UserProgram): OpenProgram => ({
   name: p.name,
   source: p.source,
   isExample: false,
-  usesDevices: false,
 });
 
 const starterSource = (name: string) => `; ${name}
@@ -74,6 +71,16 @@ function load(): Library {
   return { programs: [], current: DEFAULT_REF };
 }
 
+// The program list in a saved library, or null if it's damaged.
+export function parsePrograms(json: string): UserProgram[] | null {
+  try {
+    const saved = JSON.parse(json);
+    return Array.isArray(saved?.programs) ? saved.programs : null;
+  } catch {
+    return null;
+  }
+}
+
 export function usePrograms() {
   const [library, setLibrary] = useState(load);
   const { programs } = library;
@@ -85,6 +92,25 @@ export function usePrograms() {
       // Private mode or storage full: programs just won't be saved.
     }
   }, [library]);
+
+  // Another tab changed the programs: take its list, so saving here doesn't
+  // write over its changes. Each tab keeps its own open program. (When only
+  // the open program differs, nothing changes, so two tabs don't keep
+  // answering each other.)
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== STORE_KEY || event.newValue === null) return;
+      const theirs = parsePrograms(event.newValue);
+      if (!theirs) return;
+      setLibrary((before) =>
+        JSON.stringify(before.programs) === JSON.stringify(theirs)
+          ? before
+          : { ...before, programs: theirs },
+      );
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   const find = (ref: ProgramRef): OpenProgram | undefined => {
     if (ref.kind === 'example') {

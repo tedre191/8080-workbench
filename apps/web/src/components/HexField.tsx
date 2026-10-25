@@ -8,10 +8,24 @@ interface Props {
   className?: string;
   label: string;
   disabled?: boolean;
+  // For a grid of fields with one tab stop, like the memory view.
+  tabIndex?: number;
+  onFocus?(): void;
+  address?: number; // set as data-address, to find the field again
 }
 
 // A hex value that turns into an input when clicked.
-export function HexField({ value, digits, onCommit, className, label, disabled }: Props) {
+export function HexField({
+  value,
+  digits,
+  onCommit,
+  className,
+  label,
+  disabled,
+  tabIndex,
+  onFocus,
+  address,
+}: Props) {
   const [draft, setDraft] = useState<string | null>(null);
   const text = value.toString(16).toUpperCase().padStart(digits, '0');
 
@@ -21,6 +35,9 @@ export function HexField({ value, digits, onCommit, className, label, disabled }
         className={cx('hexfield', className)}
         aria-label={`${label}: ${text}h. Click to edit`}
         disabled={disabled}
+        tabIndex={tabIndex}
+        data-address={address}
+        onFocus={onFocus}
         onClick={() => setDraft(text)}
       >
         {text}
