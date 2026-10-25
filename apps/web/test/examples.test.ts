@@ -36,12 +36,16 @@ describe('examples', () => {
     expect(nums.length).toBe(53);
   });
 
-  it('hello greets and echoes', () => {
-    const { m, tty, out } = boot('hello');
-    m.run({ cycles: 10_000 });
-    tty.send('ok\r');
-    m.run({ cycles: 10_000 });
-    expect(out()).toMatch(/^Hello, 8080!\n.*ok\n$/s);
+  it('hello greets and halts', () => {
+    const { m, out } = boot('hello');
+    expect(m.run({ cycles: 10_000 }).kind).toBe('halt');
+    expect(out()).toBe('Hello, 8080!\n');
+  });
+
+  it('leds counts up', () => {
+    const { m, leds } = boot('leds');
+    m.run({ cycles: 7 + 3 * (10 + 5 + 10) });
+    expect(leds.value).toBe(2);
   });
 
   it('interrupts counts timer ticks on the LEDs', () => {

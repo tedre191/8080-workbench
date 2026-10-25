@@ -66,12 +66,7 @@ loop:   HLT
         STA frame
         CALL scroll
         CALL rain
-        MVI A, 3            ; white keys first, then the black ones over them
-        STA pass
-        CALL keypass
-        MVI A, 2
-        STA pass
-        CALL keypass
+        CALL drawkeys
         JMP loop
 
 ; The key handler: play the key's note on the next voice, at full volume.
@@ -309,36 +304,46 @@ rn2:    LDA voice
         JNZ rn1
         RET
 
-; Draw the keys as wide as `pass` (3 for white, 2 for black), each in its
-; note's colour while it sounds.
-keypass:
+; Draw the keys, each in its note's colour while it sounds. The white keys
+; are drawn around the black ones, never under them: drawing a pixel twice
+; in a frame would make it flicker.
+drawkeys:
         XRA A
-kp1:    STA idx
-        LXI H, keyw
-        CALL index
-        LXI H, pass
-        CMP M
-        JNZ kp4
-        LDA idx
+ks1:    STA idx
         CALL playing
         LXI H, notecol      ; sounding: the note's colour
-        JNZ kp2
+        JNZ ks2
         LXI H, keycol       ; not: white or black
-kp2:    LDA idx
+ks2:    LDA idx
         CALL index
         STA colour
         CALL keyshape
         MVI D, 24           ; from the top of the keyboard
-        MVI E, 8            ; white keys are 8 rows tall
+        MVI E, 5            ; black keys are 5 rows tall
         MOV A, C
         CPI 3
-        JZ kp3
-        MVI E, 5            ; black keys 5
-kp3:    CALL box
-kp4:    LDA idx
+        JNZ ks3
+        PUSH B              ; white keys 8: the bottom 3 rows full width,
+        MVI D, 29
+        MVI E, 3
+        CALL box
+        POP B
+        LDA idx             ; then the top 5 beside the black key, if any
+        LXI H, keycut
+        CALL index
+        MOV E, A
+        ADD B
+        MOV B, A
+        MOV A, C
+        SUB E
+        MOV C, A
+        MVI D, 24
+        MVI E, 5
+ks3:    CALL box
+        LDA idx
         INR A
         CPI KEYS
-        JNZ kp1
+        JNZ ks1
         RET
 
 ; B = key `idx`'s left edge, C = its width.
@@ -426,6 +431,7 @@ puts:   MOV A, M
 keymap: DB "awsedftgyhujk", 0
 keyx:   DB 0, 3, 4, 7, 8, 12, 15, 16, 19, 20, 23, 24, 28     ; left edges
 keyw:   DB 3, 2, 3, 2, 3, 3, 2, 3, 2, 3, 2, 3, 3            ; white 3, black 2
+keycut: DB 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0            ; under a black key
 keycol: DB 7, 0, 7, 0, 7, 7, 0, 7, 0, 7, 0, 7, 7            ; grey or black
 notecol:
         DB 12, 4, 14, 6, 10, 11, 3, 9, 1, 13, 5, 15, 12     ; a rainbow
@@ -447,7 +453,6 @@ vnote:  DB NONE, NONE, NONE ; each voice's key, or NONE
 vvol:   DB 0, 0, 0          ; and its volume
 frame:  DB 0                ; ticks since the last frame
 parity: DB 0                ; the notes fade every other tick
-pass:   DB 0
 idx:    DB 0
 voice:  DB 0
 colour: DB 0

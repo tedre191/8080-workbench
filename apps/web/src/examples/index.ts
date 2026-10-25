@@ -15,11 +15,11 @@ export interface Example {
 }
 
 export const EXAMPLES: Example[] = [
-  { id: 'hello', name: 'Hello & echo', source: hello },
-  { id: 'primes', name: 'Primes', source: primes },
+  { id: 'hello', name: 'Hello', source: hello },
   { id: 'leds', name: 'LED counter', source: leds },
   { id: 'display', name: 'Display pattern', source: display },
   { id: 'interrupts', name: 'Timer interrupts', source: interrupts },
+  { id: 'primes', name: 'Primes', source: primes },
   { id: 'snake', name: 'Snake', source: snake },
   { id: 'simon', name: 'Simon', source: simon },
   { id: 'cracktro', name: 'Cracktro', source: cracktro },
