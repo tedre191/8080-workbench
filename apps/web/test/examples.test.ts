@@ -190,7 +190,7 @@ describe('examples', () => {
 
       m.run({ cycles: 30 * MS }); // the first tick, at 20 ms: row 0
       expect(out()).toContain('W O R K B E N C H');
-      expect(leds.value).toBe(0x7f); // the beat meter, full and falling
+      expect(leds.value).toBe(0xff); // the beat meter, full on the kick
       sample();
       for (let t = 0; t < 600; t += 20) {
         m.run({ cycles: 20 * MS });

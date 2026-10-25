@@ -10,8 +10,10 @@
 ;   Terminal  the greetings
 ;
 ; The music plays in the timer interrupt, so it keeps time while the main
-; program draws the plasma as fast as it can. The plasma's inner loop
-; rewrites one of its own instructions for each row: see `rowadd`.
+; program draws the plasma. After each frame it halts until the next tick:
+; at 2 MHz a frame takes over two ticks to draw, so it shows a new one every
+; third tick, and the rest of the time the CPU is free. The plasma's inner
+; loop rewrites one of its own instructions for each row: see `rowadd`.
 ;
 ; Run it at 2 MHz or Max. The timer keeps real time at every speed, and at
 ; 30 Hz and 500 Hz it ticks again before the music player has finished.
@@ -127,7 +129,8 @@ rowadd: ADI 0               ; + this row's (rewritten for each row)
         MOV A, H            ; all 32 rows done when HL reaches F400h
         CPI HIGH (VRAM + 32*32)
         JNZ row
-        JMP frame
+        HLT                 ; wait for the next tick, like waiting for a
+        JMP frame           ; vertical blank: the plasma only moves then
 
 ; The music player, called by the timer 50 times a second. It saves every
 ; register, since it interrupts the plasma anywhere.
@@ -153,11 +156,13 @@ music:  PUSH PSW
         STA bar
 mu1:    XRA A
 mu2:    STA tick
+        CALL fade           ; before the drums, so a kick shows at full strength
         CALL getrow
         CALL playarp
         CALL playbass
         CALL playdrums
-        CALL fade
+        LDA beat
+        OUT LEDS
         POP H
         POP D
         POP B
@@ -221,7 +226,7 @@ ar0:    LDA bar
         JC ar1
         SUI 3
 ar1:    MOV C, A
-        MOV A, E            ; the root (MOV leaves the flags alone)
+        MOV A, E            ; the root
         DCR C
         JM ar2
         ADD B               ; the third
@@ -329,7 +334,6 @@ fade:   LDA beat
         ORA A               ; clear carry
         RAR
         STA beat
-        OUT LEDS
         LDA flash
         SUI 2
         RC
