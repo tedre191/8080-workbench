@@ -1,6 +1,17 @@
-import { assemble, Display, Machine, OPCODES, Terminal } from '@i8080/core';
+import {
+  assemble,
+  Display,
+  Leds,
+  Machine,
+  OPCODES,
+  Sound,
+  Switches,
+  Terminal,
+  Timer,
+} from '@i8080/core';
 import { describe, expect, it } from 'vitest';
 import { INSTRUCTION_GROUPS, SNIPPETS } from '../src/reference';
+import { referenceMarkdown } from '../src/referenceMarkdown';
 
 describe('reference', () => {
   it('covers every documented instruction exactly once', () => {
@@ -57,5 +68,19 @@ describe('reference', () => {
     m.run({ cycles: 5000 });
     expect(out).toBe('hello');
     expect(m.cpu.halted).toBe(true);
+  });
+});
+
+describe('docs/REFERENCE.md', () => {
+  it('matches the Reference tab (`pnpm --filter @i8080/web test -u` updates it)', async () => {
+    const devices = {
+      terminal: new Terminal(),
+      leds: new Leds(),
+      switches: new Switches(),
+      timer: new Timer(),
+      display: new Display(),
+      sound: new Sound(),
+    };
+    await expect(referenceMarkdown(devices)).toMatchFileSnapshot('../../../docs/REFERENCE.md');
   });
 });

@@ -173,7 +173,9 @@ code {
   /* The panes above and below share the same columns. The first is wider
      so a 16-byte memory row fits; the last is as wide as the devices need. */
   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) var(--side-width);
-  grid-template-rows: minmax(0, 1.4fr) minmax(0, 1fr);
+  /* The bottom row is at least as tall as the devices, so none of them is
+     cut off; the panes beside them don't size it. */
+  grid-template-rows: minmax(0, 1.4fr) minmax(min-content, 1fr);
   grid-template-areas:
     'source disasm side'
     'debug terminal side';
@@ -181,14 +183,19 @@ code {
   --display-size: 160px; /* 5 screen pixels per display pixel */
 }
 
-/* The right-hand column: the devices take the height they need, so none of
-   them is cut off, and the registers and stack get the rest. */
+/* The right-hand column shares the workspace's rows, so the registers line
+   up with the source and the devices with the terminal. */
 .side {
   grid-area: side;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
+  display: grid;
+  grid-template-rows: subgrid;
   min-height: 0;
+}
+
+/* Their content scrolls, so it shouldn't make the bottom row taller. */
+.pane-debug,
+.pane-terminal {
+  contain: size;
 }
 
 /* Big screens have room for a bigger display: 8 screen pixels per pixel. */
@@ -217,8 +224,6 @@ code {
 }
 .pane-cpu {
   grid-area: cpu;
-  flex: 1 1 0;
-  min-height: 180px;
   overflow-y: auto;
 }
 .pane-debug {
@@ -229,8 +234,16 @@ code {
 }
 .pane-devices {
   grid-area: devices;
-  flex: 0 1 auto;
   overflow-y: auto;
+}
+
+@media (min-width: 1201px) {
+  .pane-cpu {
+    grid-area: 1 / 1;
+  }
+  .pane-devices {
+    grid-area: 2 / 1;
+  }
 }
 
 .pane-title {
@@ -255,6 +268,23 @@ code {
 
 .pane-title .btn {
   margin-left: auto;
+}
+
+/* A title with controls of its own: the heading, then the controls on the right. */
+.pane-title h2 {
+  margin: 0;
+  font: inherit;
+}
+
+.pane-title-tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pane-title-tools .btn {
+  margin-left: 0;
 }
 
 @media (max-width: 1200px) {

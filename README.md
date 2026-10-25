@@ -8,6 +8,8 @@ runs as you type on a small machine with a terminal, LEDs, switches, a timer, a
 
 **[tedre191.github.io/8080-workbench](https://tedre191.github.io/8080-workbench/)**
 
+![The workbench running the cracktro example](docs/screenshot.png)
+
 There are examples to start from, including Snake, Simon, and a cracktro with a
 plasma and a chiptune. The classic CPU test programs are in the menu too, and
 the CPU passes all of them.
@@ -58,7 +60,7 @@ keyboard.
 | CP/M     | ports FEh, FFh | Console support for `.COM` programs                        |
 
 The Reference tab (F1) has the details, plus every instruction and some
-snippets. The timer and sound keep real time at every speed, so programs that
+snippets. It's also in [docs/REFERENCE.md](docs/REFERENCE.md). The timer and sound keep real time at every speed, so programs that
 use the timer want 2 MHz or Max.
 
 ## The library
@@ -80,7 +82,9 @@ pnpm format
 pnpm build
 ```
 
-Run `pnpm test:exm` after changing `cpu.ts`. The library stays free of
+Run `pnpm test:exm` after changing `cpu.ts`. `docs/REFERENCE.md` is generated
+from the Reference tab; a test fails when it's out of date, and
+`pnpm --filter @i8080/web test -u` rewrites it. The library stays free of
 dependencies and UI code: new hardware goes in `packages/core/src/devices/`
 with a test, then gets a view in the workbench. Issues and pull requests are
 welcome.

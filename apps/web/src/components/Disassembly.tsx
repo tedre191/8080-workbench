@@ -24,18 +24,21 @@ export function Disassembly({ session }: { session: Session }) {
 
   return (
     <div className="disasm">
-      <div className="panel-tools">
-        <AddressInput
-          onGo={setStart}
-          resolve={(text) => resolveAddress(text, session.program?.symbols)}
-        />
-        <button
-          className={cx('btn', 'small', start === null && 'active')}
-          onClick={() => setStart(null)}
-          title="Keep the current instruction in view"
-        >
-          Follow PC
-        </button>
+      <div className="pane-title">
+        <h2>Disassembly</h2>
+        <div className="pane-title-tools">
+          <AddressInput
+            onGo={setStart}
+            resolve={(text) => resolveAddress(text, session.program?.symbols)}
+          />
+          <button
+            className={cx('btn', 'small', start === null && 'active')}
+            onClick={() => setStart(null)}
+            title="Keep the current instruction in view"
+          >
+            Follow PC
+          </button>
+        </div>
       </div>
       <div className="disasm-rows" role="list">
         {instructions.map((instruction) => (

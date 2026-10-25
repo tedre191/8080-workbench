@@ -318,7 +318,6 @@ export function App() {
         </section>
 
         <section className="pane pane-disasm">
-          <h2 className="pane-title">Disassembly</h2>
           <Disassembly session={session} />
         </section>
 

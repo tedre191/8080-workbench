@@ -1,7 +1,20 @@
 // Content for the Reference tab. Instruction rows are generated from the
 // core library's tables so they always match the assembler; only the
 // grouping, the condition table and the snippets are written by hand.
-import { CONDITIONS, DIRECTIVE_DOCS, formatTiming, INSTRUCTION_DOCS } from '@i8080/core';
+import {
+  CONDITIONS,
+  DIRECTIVE_DOCS,
+  formatTiming,
+  hex16,
+  hex8,
+  INSTRUCTION_DOCS,
+  type Display,
+  type Leds,
+  type Sound,
+  type Switches,
+  type Terminal,
+  type Timer,
+} from '@i8080/core';
 
 export interface InstructionRow {
   // e.g. `MVI r, d8`, or `Jcc addr` for a family of conditional instructions.
@@ -123,6 +136,57 @@ export const SYNTAX_ROWS: [string, string][] = [
   ['HIGH x  LOW x', 'The high or low byte of a 16-bit value.'],
   ...Object.values(DIRECTIVE_DOCS).map((doc): [string, string] => [doc.syntax, doc.summary]),
 ];
+
+export interface MachineDevices {
+  terminal: Terminal;
+  leds: Leds;
+  switches: Switches;
+  timer: Timer;
+  display: Display;
+  sound: Sound;
+}
+
+// The ports and addresses of the workbench's devices, read from the devices themselves.
+export function machineRows({
+  terminal,
+  leds,
+  switches,
+  timer,
+  display,
+  sound,
+}: MachineDevices): [string, string][] {
+  return [
+    [
+      `IN ${hex8(terminal.statusPort)}h`,
+      'Terminal status: bit 0 = a key is waiting, bit 1 = ready to send',
+    ],
+    [`IN ${hex8(terminal.dataPort)}h`, 'Terminal: read the key'],
+    [`OUT ${hex8(terminal.dataPort)}h`, 'Terminal: print a character'],
+    [
+      `OUT ${hex8(terminal.statusPort)}h`,
+      'Terminal control: 80h = interrupt with RST 7 while a key is waiting, 03h = reset',
+    ],
+    [`OUT ${hex8(leds.port)}h`, 'LEDs, one per bit'],
+    [`IN ${hex8(switches.port)}h`, 'Switches, one per bit'],
+    [`OUT ${hex8(timer.port)}h`, 'Timer: n = interrupt every n ms with RST 1, 0 = stop'],
+    [
+      `${hex16(display.address)}h`,
+      `Display, ${display.width}×${display.height}: one byte per pixel, row by row, colours below`,
+    ],
+    [
+      `OUT ${hex8(sound.port)}h, ${hex8(sound.port + 4)}h, ${hex8(sound.port + 8)}h`,
+      'Sound voices 0, 1, 2: play MIDI note n (60 = middle C, 69 = A 440 Hz), 0 = off',
+    ],
+    ['… +1', 'Sound voice’s waveform: 0 square, 1 triangle, 2 sawtooth, 3 noise'],
+    ['… +2', 'Sound voice’s volume, 0–15'],
+    ['… +3', 'Sound voice’s pan: 80h far left, 0 centre, 7Fh far right'],
+    [
+      'RST n',
+      'Calls address n × 8: 0000h, 0008h, … 0038h. Interrupts arrive as RST; when several are waiting, the highest RST goes first.',
+    ],
+    ['LXI SP, 0E000h', 'A good place for the stack; it grows down.'],
+  ];
+}
 
 export interface Snippet {
   title: string;

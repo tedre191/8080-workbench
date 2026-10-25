@@ -1,10 +1,11 @@
-import { Display, hex8, hex16 } from '@i8080/core';
+import { Display } from '@i8080/core';
 import { useState, type ReactNode } from 'react';
 import { highlightLine } from '../highlight';
 import {
   CONDITION_ROWS,
   FLAG_ROWS,
   INSTRUCTION_GROUPS,
+  machineRows,
   OPERAND_KEY,
   SNIPPETS,
   SYNTAX_ROWS,
@@ -29,38 +30,7 @@ export function Reference({ session, onInsert, onNewProgram }: Props) {
   const search = query.trim().toLowerCase();
   const matches = (...text: string[]) => !search || text.join(' ').toLowerCase().includes(search);
 
-  const { terminal, leds, switches, timer, display, sound } = session;
-  const machineRows: [string, string][] = [
-    [
-      `IN ${hex8(terminal.statusPort)}h`,
-      'Terminal status: bit 0 = a key is waiting, bit 1 = ready to send',
-    ],
-    [`IN ${hex8(terminal.dataPort)}h`, 'Terminal: read the key'],
-    [`OUT ${hex8(terminal.dataPort)}h`, 'Terminal: print a character'],
-    [
-      `OUT ${hex8(terminal.statusPort)}h`,
-      'Terminal control: 80h = interrupt with RST 7 while a key is waiting, 03h = reset',
-    ],
-    [`OUT ${hex8(leds.port)}h`, 'LEDs, one per bit'],
-    [`IN ${hex8(switches.port)}h`, 'Switches, one per bit'],
-    [`OUT ${hex8(timer.port)}h`, 'Timer: n = interrupt every n ms with RST 1, 0 = stop'],
-    [
-      `${hex16(display.address)}h`,
-      `Display, ${display.width}×${display.height}: one byte per pixel, row by row, colours below`,
-    ],
-    [
-      `OUT ${hex8(sound.port)}h, ${hex8(sound.port + 4)}h, ${hex8(sound.port + 8)}h`,
-      'Sound voices 0, 1, 2: play MIDI note n (60 = middle C, 69 = A 440 Hz), 0 = off',
-    ],
-    ['… +1', 'Sound voice’s waveform: 0 square, 1 triangle, 2 sawtooth, 3 noise'],
-    ['… +2', 'Sound voice’s volume, 0–15'],
-    ['… +3', 'Sound voice’s pan: 80h far left, 0 centre, 7Fh far right'],
-    [
-      'RST n',
-      'Calls address n × 8: 0000h, 0008h, … 0038h. Interrupts arrive as RST; when several are waiting, the highest RST goes first.',
-    ],
-    ['LXI SP, 0E000h', 'A good place for the stack; it grows down.'],
-  ];
+  const machine = machineRows(session).filter((row) => matches('machine port device', ...row));
 
   // Each section also matches a few words describing it, so "flag" finds the flag table.
   const groups = INSTRUCTION_GROUPS.map((group) => ({
@@ -73,7 +43,6 @@ export function Reference({ session, onInsert, onNewProgram }: Props) {
   const flags = FLAG_ROWS.filter((row) => matches('flag', ...row));
   const operands = OPERAND_KEY.filter((row) => matches('operand', ...row));
   const syntax = SYNTAX_ROWS.filter((row) => matches('syntax', ...row));
-  const machine = machineRows.filter((row) => matches('machine port device', ...row));
   const showPalette = matches('display colour color palette');
   const snippets = SNIPPETS.filter((snippet) =>
     matches('snippet example pattern', snippet.title, snippet.note, snippet.code),
