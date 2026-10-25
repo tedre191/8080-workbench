@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { cx } from '../cx';
 import { SPEEDS, type Session } from '../session';
 
@@ -5,10 +6,22 @@ interface Props {
   session: Session;
 }
 
-function Led({ on, label, title }: { on: boolean; label?: string; title?: string }) {
+interface LedProps {
+  on: boolean;
+  // How brightly it glows when on, from 0 to 1, for a light that's on for
+  // part of each frame.
+  level?: number;
+  label?: string;
+  title?: string;
+}
+
+function Led({ on, level = 1, label, title }: LedProps) {
   return (
     <span className="led-cell" title={title}>
-      <span className={cx('led', on && 'on')} />
+      <span
+        className={cx('led', on && 'on')}
+        style={level < 1 ? ({ '--level': level } as CSSProperties) : undefined}
+      />
       {label !== undefined && <span className="led-label">{label}</span>}
     </span>
   );
@@ -40,6 +53,14 @@ function formatHz(hz: number) {
   return `${hz.toFixed(0)} Hz`;
 }
 
+function formatShare(share: number) {
+  const percent = share * 100;
+  // Show that there's a little work going on, or a little time to spare.
+  if (percent > 0 && percent < 1) return '<1%';
+  if (percent > 99 && percent < 100) return '>99%';
+  return `${percent.toFixed(0)}%`;
+}
+
 export function FrontPanel({ session }: Props) {
   const { machine, running } = session;
   const cpu = machine.cpu;
@@ -60,7 +81,12 @@ export function FrontPanel({ session }: Props) {
           <span className="bank-name">Status</span>
           <div className="bank-leds">
             <Led on={running} label="run" title="Running" />
-            <Led on={cpu.halted} label="hlt" title="Halted" />
+            <Led
+              on={running ? session.haltedLevel > 0.01 : cpu.halted}
+              level={running ? session.haltedLevel : 1}
+              label="hlt"
+              title="Halted (glows dimly when the CPU halts between interrupts)"
+            />
             <Led on={cpu.inte} label="inte" title="Interrupts enabled" />
           </div>
         </div>
@@ -116,9 +142,16 @@ export function FrontPanel({ session }: Props) {
           </div>
           <span
             className="clock-readout"
-            title={running ? 'Effective clock rate' : 'Clock cycles (T-states) since restart'}
+            title={
+              running
+                ? 'Effective clock rate, and the share of it spent outside HLT'
+                : 'Clock cycles (T-states) since restart'
+            }
           >
             {running ? formatHz(session.measuredHz) : `${cpu.cycles.toLocaleString()} cycles`}
+            {running && session.busyShare !== null && (
+              <span className="busy-readout">{formatShare(session.busyShare)} busy</span>
+            )}
           </span>
         </div>
       </div>

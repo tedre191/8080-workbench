@@ -280,6 +280,9 @@ export class Machine implements Bus {
     return this.cpu.cycles;
   }
 
+  // Of those, the cycles spent halted, waiting for an interrupt.
+  haltedCycles = 0;
+
   // Call `callback` after `delay` cycles. Returns a function that cancels it.
   schedule(delay: number, callback: () => void) {
     return this.scheduleAt(this.cpu.cycles + delay, callback);
@@ -451,6 +454,7 @@ export class Machine implements Bus {
     this.stopRequest = null;
     this.traceLength = 0;
     this.traceNext = 0;
+    this.haltedCycles = 0;
     for (const device of this.devices) device.reset?.();
   }
 
@@ -472,7 +476,9 @@ export class Machine implements Bus {
             // Nothing happens until an interrupt: from a scheduled event, or
             // from outside, like a key arriving. Skip ahead to the next event,
             // or wait out the budget.
-            cpu.cycles = Math.max(cpu.cycles, Math.min(this.nextEventTime, endTime));
+            const wakeTime = Math.max(cpu.cycles, Math.min(this.nextEventTime, endTime));
+            this.haltedCycles += wakeTime - cpu.cycles;
+            cpu.cycles = wakeTime;
             if (this.stopRequest) return this.stopRequest;
             continue;
           }

@@ -160,6 +160,21 @@ wait:   HLT
     expect(m.run({ cycles: 200 })).toEqual({ kind: 'halt', pc: m.cpu.pc });
   });
 
+  it('counts the cycles spent halted', () => {
+    const { m } = machineWith(`
+        EI
+        MVI B, 10
+loop:   DCR B           ; 10 x 15 cycles of work
+        JNZ loop
+        HLT`);
+    m.run({ cycles: 1000 });
+    const busy = 4 + 7 + 10 * (5 + 10) + 7; // EI, MVI, the loop, HLT
+    expect(m.cpu.halted).toBe(true);
+    expect(m.haltedCycles).toBe(m.cycles - busy);
+    m.reset();
+    expect(m.haltedCycles).toBe(0);
+  });
+
   it('maps memory regions and lets later mappings win', () => {
     const m = new Machine();
     m.ram[0x1000] = 99;

@@ -70,6 +70,9 @@ const MAX_FASTER = 1.02;
 const MAX_LAG_SECONDS = 0.5;
 // How much of each 60 fps frame Max may spend emulating, in ms.
 const FRAME_WORK_MS = 12;
+// How far the HLT light moves toward each frame's share of time halted.
+const HALTED_LEVEL_EASE = 0.25;
+
 // Instructions run in slices of this many cycles, to check the time between.
 const SLICE_CYCLES = 250_000;
 // How long a step over or out may run before it moves to the frame loop, so
@@ -118,6 +121,13 @@ export class Session {
   status: Status = { tone: 'info', text: '' };
   terminalText = '';
   measuredHz = 0;
+  // While running: the share of the clock spent outside HLT, sampled with
+  // `measuredHz`, or null if the program hasn't waited in HLT since restart.
+  busyShare: number | null = null;
+  // While running: how brightly the HLT light glows, from 0 to 1. On the
+  // Altair it lit whenever the CPU was halted, so a program that halts
+  // between interrupts made it glow dimly, in proportion to the time halted.
+  haltedLevel = 0;
 
   // The state before the last step, to highlight what changed.
   prevCpu: CpuState = this.machine.cpu.getState();
@@ -130,7 +140,7 @@ export class Session {
   // Clock cycles due but not yet run. Negative when the last instruction ran
   // past the time it was given, so the average rate comes out exact.
   private cyclesOwed = 0;
-  private rateSample = { time: 0, clock: 0 };
+  private rateSample = { time: 0, clock: 0, cycles: 0, halted: 0 };
   // Max's current clock rate.
   private maxHz = MAX_START_HZ;
   // For converting cycles to emulated seconds: the clock rate since `cycles`,
@@ -314,7 +324,8 @@ export class Session {
     this.resuming = true;
     this.cyclesOwed = 0;
     this.lastFrameTime = performance.now();
-    this.rateSample = { time: this.lastFrameTime, clock: this.clock() };
+    this.rateSample = this.sampleAt(this.lastFrameTime);
+    this.haltedLevel = this.machine.cpu.halted ? 1 : 0;
     this.frameRequest = requestAnimationFrame(this.onFrame);
   }
 
@@ -380,7 +391,9 @@ export class Session {
     // Cap the elapsed time so a backgrounded tab doesn't run seconds at once.
     const elapsedMs = Math.min(now - this.lastFrameTime, 100);
     this.lastFrameTime = now;
+    const { cycles, haltedCycles } = this.machine;
     const stop = this.runFor(elapsedMs);
+    this.measureHalted(this.machine.cycles - cycles, this.machine.haltedCycles - haltedCycles);
     this.measureRate(now);
 
     if (stop.kind === 'budget') {
@@ -498,12 +511,28 @@ export class Session {
     return this.machine.cycles + this.cyclesOwed;
   }
 
-  // Update `measuredHz` twice a second.
+  private sampleAt(time: number) {
+    const { cycles, haltedCycles } = this.machine;
+    return { time, clock: this.clock(), cycles, halted: haltedCycles };
+  }
+
+  // Update `measuredHz` and `busyShare` twice a second.
   private measureRate(now: number) {
-    const elapsedMs = now - this.rateSample.time;
+    const sample = this.rateSample;
+    const elapsedMs = now - sample.time;
     if (elapsedMs < 500) return;
-    this.measuredHz = ((this.clock() - this.rateSample.clock) * 1000) / elapsedMs;
-    this.rateSample = { time: now, clock: this.clock() };
+    this.rateSample = this.sampleAt(now);
+    this.measuredHz = ((this.rateSample.clock - sample.clock) * 1000) / elapsedMs;
+    const cycles = this.rateSample.cycles - sample.cycles;
+    if (this.machine.haltedCycles === 0) this.busyShare = null;
+    else if (cycles > 0) this.busyShare = 1 - (this.rateSample.halted - sample.halted) / cycles;
+  }
+
+  // Move `haltedLevel` toward the share of this frame's cycles spent halted,
+  // over a few frames, the way a lamp's glow evens out its flicker.
+  private measureHalted(cycles: number, halted: number) {
+    if (cycles <= 0) return;
+    this.haltedLevel += (halted / cycles - this.haltedLevel) * HALTED_LEVEL_EASE;
   }
 
   private describe(stop: StopReason): Status {
