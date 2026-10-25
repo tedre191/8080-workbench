@@ -21,6 +21,8 @@ export function AddressInput({ onGo, resolve }: Props) {
     <form className="addr-input" onSubmit={submit}>
       <input
         aria-label="Go to address or label"
+        autoComplete="off"
+        data-1p-ignore
         placeholder="Go to…"
         value={text}
         className={invalid ? 'bad' : ''}

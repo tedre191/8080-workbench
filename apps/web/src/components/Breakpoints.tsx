@@ -38,6 +38,8 @@ function BreakpointList({ session }: { session: Session }) {
       <form className="inline-form" onSubmit={add}>
         <input
           aria-label="Breakpoint address"
+          autoComplete="off"
+          data-1p-ignore
           placeholder="Address or label"
           value={text}
           onChange={(event) => setText(event.target.value)}
@@ -119,6 +121,8 @@ function WatchpointList({ session }: { session: Session }) {
         </select>
         <input
           aria-label="Watch address"
+          autoComplete="off"
+          data-1p-ignore
           placeholder={isPort ? 'Port, e.g. 20' : 'e.g. count or F000-F3FF'}
           value={text}
           onChange={(event) => setText(event.target.value)}

@@ -180,6 +180,8 @@ function ProgramName({ name, onRename }: { name: string; onRename(name: string):
     <input
       className="program-name"
       aria-label="Program name"
+      autoComplete="off"
+      data-1p-ignore
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => (draft.trim() ? onRename(draft) : setDraft(name))}

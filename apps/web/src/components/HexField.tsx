@@ -54,6 +54,8 @@ export function HexField({
       className={cx('hexfield', 'editing', className)}
       aria-label={label}
       autoFocus
+      autoComplete="off"
+      data-1p-ignore
       value={draft}
       maxLength={digits}
       size={digits}

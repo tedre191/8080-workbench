@@ -59,6 +59,8 @@ export function Reference({ session, onInsert, onNewProgram }: Props) {
           className="reference-search"
           placeholder="Search: carry, compare, JNZ, port…"
           aria-label="Search the reference"
+          autoComplete="off"
+          data-1p-ignore
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
