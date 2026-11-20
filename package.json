@@ -19,8 +19,8 @@
     "fetch-roms": "pnpm --filter @i8080/core fetch-roms"
   },
   "devDependencies": {
-    "prettier": "3.9.10",
-    "oxlint": "1.93.0"
+    "prettier": "3.10.1",
+    "oxlint": "1.94.0"
   },
   "license": "MIT",
   "engines": {
